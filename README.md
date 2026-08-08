@@ -64,6 +64,9 @@ clj
     (nn/linear 20 1)))
 
 (nn/forward model (t/randn [4 10]))
+
+;; Print layer shapes and parameter counts
+(nn/summary model [4 10])
 ```
 
 ### Custom models with `defmodel`
