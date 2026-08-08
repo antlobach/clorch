@@ -64,9 +64,6 @@ clj
     (nn/linear 20 1)))
 
 (nn/forward model (t/randn [4 10]))
-
-;; Print layer shapes and parameter counts
-(nn/summary model [4 10])
 ```
 
 ### Custom models with `defmodel`
@@ -82,6 +79,9 @@ clj
 
 (def custom-model (CustomMLP 10 32 1))
 (t/size (nn/forward custom-model (t/randn [4 10]))) ; => [4 1]
+
+;; Print CustomMLP layer shapes and parameter counts
+(nn/summary custom-model [4 10])
 ```
 
 
