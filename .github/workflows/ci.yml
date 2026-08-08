@@ -3,8 +3,24 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "PORTING_STATUS.md"
+      - "LICENSE"
+      - "CODEOWNERS"
+      - "clorch-logo*.png"
+      - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "PORTING_STATUS.md"
+      - "LICENSE"
+      - "CODEOWNERS"
+      - "clorch-logo*.png"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
