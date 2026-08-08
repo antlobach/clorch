@@ -65,7 +65,7 @@ Define custom modules with `nn/defmodel`. See the [custom model and dataset exam
 - **Tensor and training APIs:** tensor operations, autograd, losses, optimizers, data loaders, state dictionaries, and native-memory scopes
 - **Model building:** standard layers, custom `nn/defmodel` modules, architecture summaries, and checkpoint loading
 - **LLM components:** RMSNorm, RoPE, grouped-query attention, SwiGLU, causal masks, KV caches, and autoregressive generation
-- **Compact chat example:** [`examples/nanochat.clj`](examples/nanochat.clj) trains a two-layer Llama-style model on one text corpus, saves and loads a checkpoint, and generates tokens with optional KV caching. It is not a full port of [Karpathy's NanoChat](https://github.com/karpathy/nanochat).
+- **NanoChat-inspired example:** a compact, single-device Llama-style training and chat demo with checkpointing and optional KV caching, inspired by [Karpathy's NanoChat](https://github.com/karpathy/nanochat)
 - **CPU and CUDA:** native LibTorch execution with explicit tensor and model placement
 
 ## CPU and CUDA
