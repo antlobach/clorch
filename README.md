@@ -125,7 +125,7 @@ Full documentation: **[antlobach.github.io/clorch](https://antlobach.github.io/c
 - [Autograd tutorial](examples/autograd_tutorial.clj): gradients and graph behavior
 - [Synthetic training](examples/synthetic.clj): end-to-end model training
 - [Modern Llama](examples/modern_llama.clj): RoPE, GQA, SwiGLU, and KV caching
-- [NanoChat](examples/nanochat.clj): GPT-style training and generation
+- [Compact Llama chat](examples/nanochat.clj): small-corpus training, checkpointing, and token generation
 
 ## Project status
 
