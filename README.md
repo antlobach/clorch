@@ -66,7 +66,23 @@ clj
 (nn/forward model (t/randn [4 10]))
 ```
 
-Define custom modules with `nn/defmodel`. See the [custom model and dataset example](examples/custom_model_dataset.clj) for a complete training loop.
+### Custom models with `defmodel`
+
+```clojure
+(require '[clorch.nn.functional :as F])
+
+(nn/defmodel CustomMLP [in hidden out]
+  [l1 (nn/linear in hidden)
+   l2 (nn/linear hidden out)]
+  (forward [x]
+    (nn/forward l2 (F/relu (nn/forward l1 x)))))
+
+(def custom-model (CustomMLP 10 32 1))
+(t/size (nn/forward custom-model (t/randn [4 10]))) ; => [4 1]
+```
+
+
+The constructor arguments configure the model, the binding vector registers modules or parameters, and the `forward` form defines execution. Registered fields participate in `nn/parameters`, `nn/to`, and state dictionaries. Read [Custom Models with `defmodel`](docs/nn.md#custom-models-with-defmodel) or the [minimal source example](examples/simple.clj).
 
 ## CPU and CUDA
 

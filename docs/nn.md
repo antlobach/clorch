@@ -74,21 +74,37 @@ A simple linear stack of layers.
              (nn/linear 20 1)))
 ```
 
-### Custom Models (`defmodel`)
-Use the `defmodel` macro to define complex, stateful architectures using Clojure records.
+### Custom Models with `defmodel`
+
+`defmodel` creates a reusable model constructor without requiring a manual `defrecord` or `IModule` implementation. It has three parts:
+
+1. A model name and constructor arguments.
+2. A binding vector of field/value pairs created when the model is instantiated.
+3. A `forward` form that can refer to those fields directly.
 
 ```clojure
+(require '[clorch.torch :as t]
+         '[clorch.nn :as nn]
+         '[clorch.nn.functional :as F])
+
 (nn/defmodel MyClassifier [in-dim hidden-dim num-classes]
   [l1 (nn/linear in-dim hidden-dim)
    l2 (nn/linear hidden-dim num-classes)]
   (forward [x]
-    (let [x1 (nn/forward l1 x)
-          x2 (F/relu x1)]
-      (nn/forward l2 x2))))
+    (nn/forward l2 (F/relu (nn/forward l1 x)))))
 
-;; Instantiate like a function
 (def classifier (MyClassifier 784 256 10))
+(def logits (nn/forward classifier (t/randn [32 784])))
+(t/size logits) ; => [32 10]
 ```
+
+Fields containing modules, parameters, tensors, vectors, or maps participate in recursive model operations. `nn/train`, `nn/to`, `nn/parameters`, and state-dictionary functions traverse them automatically. The generated model is also callable:
+
+```clojure
+(classifier (t/randn [32 784]))
+```
+
+Use [`examples/simple.clj`](https://github.com/antlobach/clorch/blob/main/examples/simple.clj) for a minimal runnable model and [`examples/llms_from_scratch.clj`](https://github.com/antlobach/clorch/blob/main/examples/llms_from_scratch.clj) for nested custom modules.
 
 ## Lifecycle API
 
