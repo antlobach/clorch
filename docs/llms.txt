@@ -1,0 +1,57 @@
+# Clorch
+
+> Clorch is a Clojure deep-learning library backed by LibTorch. It provides PyTorch-style tensors, autograd, neural-network modules, optimizers, data loading, and explicit CPU/CUDA device placement through a REPL-friendly API.
+
+Clorch follows PyTorch concepts but does not expose every PyTorch symbol. Verify public vars in the linked documentation or source instead of translating Python names mechanically.
+
+Namespace map: `torch` → `clorch.torch`; `torch.cuda` → `clorch.cuda`; `torch.autograd` → `clorch.autograd`; `torch.nn` → `clorch.nn`; `torch.nn.functional` → `clorch.nn.functional`; `torch.optim` → `clorch.optim`; `torch.distributions` → `clorch.distributions`; `torch.linalg` → `clorch.linalg`; `Dataset` and `DataLoader` → `clorch.data`.
+
+Runtime rules: resolve one application-level device and place models and tensors explicitly. Keep models and optimizers outside repeated `with-torch` scopes. Use one scope per allocating batch or generation step, returning a JVM scalar or `nil` unless a tensor must escape.
+
+Current limits: single-device training only. Distributed training, AMP, dedicated Flash Attention, and a `torch.compile` equivalent are not implemented. Consult the parity guide before making coverage claims.
+
+## Start Here
+
+- [README](https://raw.githubusercontent.com/antlobach/clorch/main/README.md): Installation, Quick Start, device selection, memory rules, namespace map, examples, and project status.
+- [Documentation home](https://antlobach.github.io/clorch/): Human-readable Clorch documentation.
+- [Agent guide](https://raw.githubusercontent.com/antlobach/clorch/main/AGENTS.md): Repository workflow, runtime invariants, source map, formatting, and verification commands for coding agents.
+- [Source repository](https://github.com/antlobach/clorch): Current source, issues, releases, and CI status.
+
+## Core API
+
+- [Tensors and operations](https://raw.githubusercontent.com/antlobach/clorch/main/docs/tensors.md): Tensor creation, dtypes, devices, shapes, indexing, math, reductions, sampling, and serialization.
+- [Slicing and indexing](https://raw.githubusercontent.com/antlobach/clorch/main/docs/slicing.md): Python-style `ix`, ranges, ellipsis, masks, and advanced indexing.
+- [Linear algebra](https://raw.githubusercontent.com/antlobach/clorch/main/docs/tensors.md): Matrix operations and links to the `clorch.linalg` API.
+- [Distributions](https://raw.githubusercontent.com/antlobach/clorch/main/docs/distributions.md): Probability distributions, sampling, log probability, moments, and entropy.
+- [CUDA and devices](https://raw.githubusercontent.com/antlobach/clorch/main/README.md): Automatic backend selection and explicit tensor/model placement.
+
+## Models and Training
+
+- [Neural-network modules](https://raw.githubusercontent.com/antlobach/clorch/main/docs/nn.md): Standard layers, custom `defmodel` modules, state dictionaries, summaries, and model movement.
+- [Functional API](https://raw.githubusercontent.com/antlobach/clorch/main/docs/functional.md): Stateless linear, convolutional, activation, normalization, pooling, interpolation, and loss operations.
+- [Autograd](https://raw.githubusercontent.com/antlobach/clorch/main/docs/autograd.md): Gradient tracking, backward passes, detach, no-grad scopes, and training loops.
+- [Optimizers](https://raw.githubusercontent.com/antlobach/clorch/main/docs/optimizers.md): SGD, Adam, AdamW, RMSprop, and Adagrad.
+- [Loss functions](https://raw.githubusercontent.com/antlobach/clorch/main/docs/losses.md): Regression and classification losses.
+- [Initialization](https://raw.githubusercontent.com/antlobach/clorch/main/docs/init.md): Parameter initialization helpers.
+- [Memory management](https://raw.githubusercontent.com/antlobach/clorch/main/docs/memory.md): Native-memory scopes, retention, release, REPL sessions, and repeated workloads.
+
+## Examples
+
+- [PyTorch basics](https://raw.githubusercontent.com/antlobach/clorch/main/examples/pytorch_basics_tutorial.clj): Tensors, datasets, models, optimization, and inference.
+- [Custom model and dataset](https://raw.githubusercontent.com/antlobach/clorch/main/examples/custom_model_dataset.clj): `defmodel`, custom datasets, data loading, and a complete training loop.
+- [Synthetic training](https://raw.githubusercontent.com/antlobach/clorch/main/examples/synthetic.clj): Compact end-to-end supervised training.
+- [Modern Llama](https://raw.githubusercontent.com/antlobach/clorch/main/examples/modern_llama.clj): RMSNorm, RoPE, GQA, SwiGLU, causal masking, and KV caching.
+- [NanoChat-inspired example](https://raw.githubusercontent.com/antlobach/clorch/main/examples/nanochat.clj): Compact single-device Llama-style training, checkpointing, generation, and terminal chat inspired by Karpathy's NanoChat.
+- [LLMs from scratch](https://raw.githubusercontent.com/antlobach/clorch/main/examples/llms_from_scratch.clj): GPT-style transformer construction with custom Clorch modules.
+
+## Project Status
+
+- [PyTorch parity](https://raw.githubusercontent.com/antlobach/clorch/main/docs/pytorch-parity.md): Measured numerical parity, tracked feature breadth, capability gaps, LLM coverage, and roadmap.
+- [Porting status](https://raw.githubusercontent.com/antlobach/clorch/main/PORTING_STATUS.md): Repository feature inventory.
+- [Release verification](https://raw.githubusercontent.com/antlobach/clorch/main/scripts/release-check.sh): CPU/GPU release-check entry point.
+
+## Optional
+
+- [Performance and profiling](https://raw.githubusercontent.com/antlobach/clorch/main/docs/profiling.md): Timing, performance, and leak-detection guidance.
+- [Slicing examples](https://raw.githubusercontent.com/antlobach/clorch/main/docs/slicing-examples.md): Additional indexing examples.
+- [Activation functions](https://raw.githubusercontent.com/antlobach/clorch/main/docs/activations.md): Stateful and functional activation reference.

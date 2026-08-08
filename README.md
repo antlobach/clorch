@@ -119,6 +119,32 @@ Full documentation: **[antlobach.github.io/clorch](https://antlobach.github.io/c
 | [Memory management](docs/memory.md) | Native allocation scopes and pointer lifecycles |
 | [PyTorch parity](docs/pytorch-parity.md) | Measured coverage, current gaps, and roadmap |
 
+## AI coding agents
+
+Machine-readable project index: [`llms.txt`](https://antlobach.github.io/clorch/llms.txt)
+
+Clorch follows PyTorch concepts, but it does not expose every PyTorch symbol. Check the linked API documentation or source before translating a Python call.
+
+| PyTorch concept | Clorch namespace |
+|---|---|
+| `torch` | `clorch.torch` |
+| `torch.cuda` | `clorch.cuda` |
+| `torch.autograd` | `clorch.autograd` |
+| `torch.nn` | `clorch.nn` |
+| `torch.nn.functional` | `clorch.nn.functional` |
+| `torch.optim` | `clorch.optim` |
+| `torch.distributions` | `clorch.distributions` |
+| `torch.linalg` | `clorch.linalg` |
+| `Dataset` / `DataLoader` | `clorch.data` |
+
+When generating Clorch code:
+
+- Resolve one application-level device, then place models and input tensors explicitly.
+- Keep long-lived models and optimizers outside `with-torch`; use one scope per allocating batch or generation step.
+- Return a JVM scalar or `nil` from `with-torch` unless a tensor must escape.
+- Reuse patterns from the [examples](examples/) instead of inventing wrapper APIs.
+- Check [PyTorch Parity](docs/pytorch-parity.md) before assuming support for distributed training, AMP, Flash Attention, or `torch.compile`.
+
 ## Examples
 
 - [PyTorch basics](examples/pytorch_basics_tutorial.clj): tensors, datasets, models, optimization, and inference

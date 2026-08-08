@@ -68,7 +68,6 @@ core.*
 venv_docs/
 
 # Local agent and audit files
-AGENTS.md
 GEMINI.md
 *_functions.txt
 *_tested.txt
