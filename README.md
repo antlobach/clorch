@@ -79,11 +79,27 @@ clj
 
 (def custom-model (CustomMLP 10 32 1))
 (t/size (nn/forward custom-model (t/randn [4 10]))) ; => [4 1]
+```
 
-;; Print CustomMLP layer shapes and parameter counts
+Inspect the custom model's layer shapes and parameter counts:
+
+```clojure
 (nn/summary custom-model [4 10])
 ```
 
+```text
+----------------------------------------------------------------
+Layer (type)                   Output Shape         Param #
+================================================================
+Linear                         [4 32]               352
+Linear                         [4 1]                33
+CustomMLPRecord                [4 1]                385
+================================================================
+Total params: 385
+Trainable params: 385
+Non-trainable params: 0
+----------------------------------------------------------------
+```
 
 The constructor arguments configure the model, the binding vector registers modules or parameters, and the `forward` form defines execution. Registered fields participate in `nn/parameters`, `nn/to`, and state dictionaries. Read [Custom Models with `defmodel`](docs/nn.md#custom-models-with-defmodel) or the [minimal source example](examples/simple.clj).
 
