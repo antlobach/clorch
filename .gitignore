@@ -1,0 +1,76 @@
+# Clojure/tools.deps
+.cpcache/
+.clj-kondo/
+
+# REPL
+.nrepl-port
+
+# IDEs
+.idea/
+.vscode/
+.calva/
+*.iml
+\#*#
+*~
+.#*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+
+# Build/Target
+target/
+classes/
+
+# Logs
+hs_err_pid*.log
+*.log
+
+# Models/Data
+*.pt
+*.pth
+*.onnx
+
+# Temporary
+temp_project/
+site/
+
+# Local workspace artifacts
+examples/out/
+parity-report.edn
+worktrees/
+.gemini/
+
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# JVM artifacts
+*.class
+*.jar
+core.*
+
+# Python documentation environment
+venv_docs/
+
+# Local agent and audit files
+AGENTS.md
+GEMINI.md
+*_functions.txt
+*_tested.txt
+the-verdict.txt
+output.log

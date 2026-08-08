@@ -1,0 +1,30 @@
+site_name: Clorch
+site_description: Clojure tensor and neural-network operations backed by LibTorch
+site_url: https://antlobach.github.io/clorch/
+docs_dir: .
+site_dir: ../site
+exclude_docs: README.md
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: indigo
+
+nav:
+  - Home: index.md
+  - Tensors & Operations: tensors.md
+  - Distributions: distributions.md
+  - Slicing & Indexing:
+      - Overview: slicing.md
+      - Examples: slicing-examples.md
+  - Neural Networks:
+      - Core Modules: nn.md
+      - Activations: activations.md
+      - Functional API: functional.md
+      - Loss Functions: losses.md
+      - Optimizers: optimizers.md
+      - Initialization: init.md
+  - Autograd: autograd.md
+  - PyTorch Parity: pytorch-parity.md
+  - Memory Management: memory.md
+  - Performance & Profiling: profiling.md

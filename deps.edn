@@ -1,0 +1,14 @@
+{:paths ["src" "test" "examples"]
+ :deps {org.bytedeco/pytorch-platform {:mvn/version "2.1.2-1.5.10"}
+        org.bytedeco/pytorch-platform-gpu {:mvn/version "2.1.2-1.5.10"}
+        org.bytedeco/cuda-platform-redist {:mvn/version "12.3-8.9-1.5.10"}
+        org.bytedeco/openblas-platform {:mvn/version "0.3.26-1.5.10"}
+        cnuernber/dtype-next {:mvn/version "11.007"}
+        nrepl/nrepl {:mvn/version "1.1.1"}
+        org.clojure/data.json {:mvn/version "2.5.0"}
+        org.clojure/data.csv {:mvn/version "1.1.0"}
+        org.scicloj/tableplot {:mvn/version "1-beta16"}
+        com.knuddels/jtokkit {:mvn/version "1.1.0"}
+        org.clojure/test.check {:mvn/version "1.1.1"}}
+ :aliases {:dev  {:main-opts ["-m" "clorch.dev"]}
+           :test {:extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}}}
