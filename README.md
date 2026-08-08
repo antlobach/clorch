@@ -12,6 +12,14 @@
 
 Clorch is a Clojure deep-learning library backed by LibTorch. It provides PyTorch-style tensors, autograd, neural-network modules, optimizers, data loading, and explicit CPU/CUDA device placement through a REPL-friendly API.
 
+## Highlights
+
+- **Tensor and training APIs:** tensor operations, autograd, losses, optimizers, data loaders, state dictionaries, and native-memory scopes
+- **Model building:** standard layers, custom `nn/defmodel` modules, architecture summaries, and checkpoint loading
+- **LLM components:** RMSNorm, RoPE, grouped-query attention, SwiGLU, causal masks, KV caches, and autoregressive generation
+- **NanoChat-inspired example:** a compact, single-device Llama-style training and chat demo with checkpointing and optional KV caching, inspired by [Karpathy's NanoChat](https://github.com/karpathy/nanochat)
+- **CPU and CUDA:** native LibTorch execution with explicit tensor and model placement
+
 ## Install
 
 Create a Clojure project with this `deps.edn`:
@@ -59,14 +67,6 @@ clj
 ```
 
 Define custom modules with `nn/defmodel`. See the [custom model and dataset example](examples/custom_model_dataset.clj) for a complete training loop.
-
-## Highlights
-
-- **Tensor and training APIs:** tensor operations, autograd, losses, optimizers, data loaders, state dictionaries, and native-memory scopes
-- **Model building:** standard layers, custom `nn/defmodel` modules, architecture summaries, and checkpoint loading
-- **LLM components:** RMSNorm, RoPE, grouped-query attention, SwiGLU, causal masks, KV caches, and autoregressive generation
-- **NanoChat-inspired example:** a compact, single-device Llama-style training and chat demo with checkpointing and optional KV caching, inspired by [Karpathy's NanoChat](https://github.com/karpathy/nanochat)
-- **CPU and CUDA:** native LibTorch execution with explicit tensor and model placement
 
 ## CPU and CUDA
 
