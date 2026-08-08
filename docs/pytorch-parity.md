@@ -8,7 +8,7 @@ Clorch follows PyTorch's tensor, autograd, module, optimizer, data, and device c
 |---|---:|---|
 | Cross-language numerical parity suite | **100% (40/40 scenarios)** | Every currently paired Clorch/Python scenario passes within its configured numerical tolerance. |
 | Tracked feature-catalog coverage | **approximately 81.7% (268 of approximately 328 capabilities)** | Coverage of the explicit capability catalog maintained in this repository. |
-| Entire upstream PyTorch public API | **Not yet enumerated** | A defensible whole-project percentage requires a version-pinned inventory of every upstream public symbol and behavior. |
+| Entire upstream PyTorch public API | **Not yet enumerated** | A whole-project percentage requires a version-pinned inventory of every upstream public symbol and behavior. |
 
 The 81.7% figure is the best current breadth estimate: $268 / (268 + 60) \times 100 \approx 81.7\%$. It is not a claim that 81.7% of every symbol in every PyTorch package exists. The 100% figure applies only to the 40 cross-language scenarios currently exercised by `tests_comparison/compare_torch.py`.
 
@@ -53,7 +53,7 @@ The release suite also verifies CUDA discovery, GPU tensor allocation, device re
 | Quantized LLM inference | Not complete | Add end-to-end weight/activation quantization and quantized kernels |
 | Distributed LLM training/inference | Not implemented | Add collectives, DDP/FSDP, tensor parallelism, and distributed checkpoints |
 
-## Roadmap to a defensible 100%
+## Roadmap to 100%
 
 1. **Freeze the target.** Select an exact upstream PyTorch release and generate a machine-readable inventory of its supported public Python and C++ APIs.
 2. **Turn inventory into contracts.** Map every upstream symbol to implemented, partial, intentionally different, or missing; attach behavior tests to every implemented mapping.
