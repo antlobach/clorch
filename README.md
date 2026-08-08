@@ -27,6 +27,23 @@
 
 ## Quick Start
 
+Create a new Clojure project with this `deps.edn`:
+
+```clojure
+{:paths ["src"]
+ :deps {io.github.antlobach/clorch
+        {:git/tag "v0.1.0"
+         :git/sha "25a6b1005b7ada7259aaca680e9507d7eb4b03ac"}}}
+```
+
+Start a REPL from that project directory. Clorch and its native dependencies download automatically:
+
+```bash
+clj
+```
+
+Then evaluate:
+
 ```clojure
 (require '[clorch.torch :as t]
          '[clorch.linalg :as linalg]

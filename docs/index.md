@@ -70,6 +70,23 @@ title: Home
 
 ---
 
+## Installation
+
+Create a new Clojure project with this `deps.edn`:
+
+```clojure
+{:paths ["src"]
+ :deps {io.github.antlobach/clorch
+        {:git/tag "v0.1.0"
+         :git/sha "25a6b1005b7ada7259aaca680e9507d7eb4b03ac"}}}
+```
+
+Start a REPL from that project:
+
+```bash
+clj
+```
+
 ## Running Examples
 Check out the `examples/` directory for full implementations:
 *   `autograd_tutorial.clj`: Basic math and gradients.
