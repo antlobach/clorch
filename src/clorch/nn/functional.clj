@@ -1,6 +1,7 @@
 (ns clorch.nn.functional
   (:require [clorch.torch :as t])
-  (:import [org.bytedeco.pytorch.global torch]))
+  (:import [org.bytedeco.pytorch DoubleOptional TensorOptional]
+           [org.bytedeco.pytorch.global torch]))
 
 (defn relu [tensor]
   (torch/relu (t/->tensor tensor)))
@@ -9,7 +10,7 @@
   (torch/relu6 (t/->tensor tensor)))
 
 (defn leaky-relu [tensor & [negative-slope]]
-  (torch/leaky_relu (t/->tensor tensor) (double (or negative-slope 0.01)) false))
+  (torch/leaky_relu (t/->tensor tensor) (org.bytedeco.pytorch.Scalar. (double (or negative-slope 0.01)))))
 
 (defn gelu [tensor]
   (torch/gelu (t/->tensor tensor)))
@@ -41,13 +42,17 @@
   (torch/hardsigmoid (t/->tensor tensor)))
 
 (defn elu [tensor & [alpha]]
-  (torch/elu (t/->tensor tensor) (double (or alpha 1.0)) false))
+  (torch/elu (t/->tensor tensor)
+             (org.bytedeco.pytorch.Scalar. (double (or alpha 1.0)))
+             (org.bytedeco.pytorch.Scalar. 1.0)
+             (org.bytedeco.pytorch.Scalar. 1.0)))
 
 (defn selu [tensor]
   (torch/selu (t/->tensor tensor)))
 
 (defn celu [tensor & [alpha]]
-  (torch/celu (t/->tensor tensor) (double (or alpha 1.0)) false))
+  (torch/celu (t/->tensor tensor)
+              (org.bytedeco.pytorch.Scalar. (double (or alpha 1.0)))))
 
 (defn softplus [tensor & [beta threshold]]
   (torch/softplus (t/->tensor tensor)
@@ -58,7 +63,9 @@
   (torch/softsign (t/->tensor tensor)))
 
 (defn softmin [tensor dim]
-  (torch/softmin (t/->tensor tensor) (long dim) (org.bytedeco.pytorch.ScalarTypeOptional.)))
+  (torch/softmax (torch/neg (t/->tensor tensor))
+                 (long dim)
+                 (org.bytedeco.pytorch.ScalarTypeOptional.)))
 
 (defn log-softmax [tensor dim-or-opts]
   (let [dim (if (map? dim-or-opts) (:dim dim-or-opts) dim-or-opts)]
@@ -74,13 +81,24 @@
   (torch/tanhshrink (t/->tensor tensor)))
 
 (defn threshold [tensor threshold-val value & {:keys [inplace] :or {inplace false}}]
-  (torch/threshold (t/->tensor tensor) (double threshold-val) (double value) (boolean inplace)))
+  (let [tensor (t/->tensor tensor)
+        threshold-value (org.bytedeco.pytorch.Scalar. (double threshold-val))
+        value (org.bytedeco.pytorch.Scalar. (double value))]
+    (if inplace
+      (torch/threshold_ tensor threshold-value value)
+      (torch/threshold tensor threshold-value value))))
 
 (defn glu [tensor & [dim]]
   (torch/glu (t/->tensor tensor) (long (or dim -1))))
 
 (defn rrelu [tensor & {:keys [lower upper training inplace] :or {lower 0.125 upper 0.3333333333333333 training false inplace false}}]
-  (torch/rrelu (t/->tensor tensor) (double lower) (double upper) (boolean training) (boolean inplace)))
+  (let [tensor (t/->tensor tensor)
+        lower (org.bytedeco.pytorch.Scalar. (double lower))
+        upper (org.bytedeco.pytorch.Scalar. (double upper))
+        generator (org.bytedeco.pytorch.GeneratorOptional.)]
+    (if inplace
+      (torch/rrelu_ tensor lower upper (boolean training) generator)
+      (torch/rrelu tensor lower upper (boolean training) generator))))
 
 (defn prelu [tensor weight]
   (torch/prelu (t/->tensor tensor) (t/->tensor weight)))
@@ -93,7 +111,34 @@
   (torch/dropout (t/->tensor tensor) (double p) (boolean training?)))
 
 (defn dropout2d [tensor p & {:keys [training?] :or {training? true}}]
-  (torch/dropout2d (t/->tensor tensor) (double p) (boolean training?) false))
+  (let [options (org.bytedeco.pytorch.DropoutFuncOptions.)]
+    (.put (.p options) (double p))
+    (.put (.training options) (boolean training?))
+    (.put (.inplace options) false)
+    (torch/dropout2d (t/->tensor tensor) options)))
+
+(defn scaled-dot-product-attention
+  "Runs LibTorch's fused scaled-dot-product attention dispatcher.
+
+  CUDA automatically selects Flash Attention, memory-efficient attention, or
+  the math kernel according to dtype, shape, mask, and hardware support."
+  [query attention-key value & {:keys [attention-mask dropout-p causal? scale enable-gqa?]
+                                :or {dropout-p 0.0 causal? false enable-gqa? false}}]
+  (with-open [mask-option (if attention-mask
+                            (TensorOptional. (t/->tensor attention-mask))
+                            (TensorOptional.))
+              scale-option (if scale
+                             (DoubleOptional. (double scale))
+                             (DoubleOptional.))]
+    (torch/scaled_dot_product_attention
+     (t/->tensor query)
+     (t/->tensor attention-key)
+     (t/->tensor value)
+     mask-option
+     (double dropout-p)
+     (boolean causal?)
+     scale-option
+     (boolean enable-gqa?))))
 
 (defn max-pool1d [tensor kernel & {:keys [stride padding dilation ceil-mode] :or {padding 0 dilation 1 ceil-mode false}}]
   (let [k (if (number? kernel) [kernel] kernel)

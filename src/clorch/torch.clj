@@ -148,9 +148,8 @@
    :Char {:kw :int8 :bytes 1}
    :Byte {:kw :uint8 :bytes 1}
    :Bool {:kw :uint8 :bytes 1}
-   ;; Fallbacks for other types if they are convertible or viewable
-   :Half {:kw :float32 :bytes 2}
-   :BFloat16 {:kw :float32 :bytes 2}
+   :Half {:kw :float16 :bytes 2}
+   :BFloat16 {:kw :bfloat16 :bytes 2}
    :ComplexFloat {:kw :float32 :bytes 8}
    :ComplexDouble {:kw :float64 :bytes 16}
    :QInt8 {:kw :int8 :bytes 1}
@@ -1025,7 +1024,13 @@
    ```clojure
    (add (ones [2]) (ones [2]))
    ```"
-  [a b] (torch/add (->tensor a) (->tensor b)))
+  [a b]
+  (cond
+    (number? b) (with-open [scalar (Scalar. (clojure.core/double b))]
+                  (torch/add (->tensor a) scalar))
+    (number? a) (with-open [scalar (Scalar. (clojure.core/double a))]
+                  (torch/add scalar (->tensor b)))
+    :else (torch/add (->tensor a) (->tensor b))))
 
 (defn sub
   "Element-wise subtraction of two tensors or a tensor and a scalar.
@@ -1040,7 +1045,13 @@
    ```clojure
    (sub (ones [2]) 0.5)
    ```"
-  [a b] (torch/sub (->tensor a) (->tensor b)))
+  [a b]
+  (cond
+    (number? b) (with-open [scalar (Scalar. (clojure.core/double b))]
+                  (torch/sub (->tensor a) scalar))
+    (number? a) (with-open [scalar (Scalar. (clojure.core/double a))]
+                  (torch/subtract scalar (->tensor b)))
+    :else (torch/sub (->tensor a) (->tensor b))))
 
 (defn mul
   "Element-wise multiplication of two tensors or a tensor and a scalar.
@@ -1055,7 +1066,13 @@
    ```clojure
    (mul (ones [2]) 2.0)
    ```"
-  [a b] (torch/mul (->tensor a) (->tensor b)))
+  [a b]
+  (cond
+    (number? b) (with-open [scalar (Scalar. (clojure.core/double b))]
+                  (torch/mul (->tensor a) scalar))
+    (number? a) (with-open [scalar (Scalar. (clojure.core/double a))]
+                  (torch/multiply scalar (->tensor b)))
+    :else (torch/mul (->tensor a) (->tensor b))))
 
 (defn div
   "Element-wise division of two tensors or a tensor and a scalar.
@@ -1070,7 +1087,13 @@
    ```clojure
    (div (ones [2]) 2.0)
    ```"
-  [a b] (torch/div (->tensor a) (->tensor b)))
+  [a b]
+  (cond
+    (number? b) (with-open [scalar (Scalar. (clojure.core/double b))]
+                  (torch/div (->tensor a) scalar))
+    (number? a) (with-open [scalar (Scalar. (clojure.core/double a))]
+                  (torch/divide scalar (->tensor b)))
+    :else (torch/div (->tensor a) (->tensor b))))
 
 (defn lerp
   "Does a linear interpolation of two tensors based on a weight.
@@ -3600,6 +3623,13 @@
         (.save ^org.bytedeco.pytorch.Module thing sub-archive)
         (.write archive (clojure.core/str prefix) sub-archive)))
 
+    (instance? org.bytedeco.pytorch.Optimizer thing)
+    (if (empty? prefix)
+      (.save ^org.bytedeco.pytorch.Optimizer thing archive)
+      (with-open [sub-archive (org.bytedeco.pytorch.OutputArchive.)]
+        (.save ^org.bytedeco.pytorch.Optimizer thing sub-archive)
+        (.write archive (clojure.core/str prefix) sub-archive)))
+
     (map? thing)
     (doseq [[k v] thing]
       (let [k-str (if (keyword? k) (name k) (str k))]
@@ -3620,6 +3650,14 @@
       (with-open [sub-archive (org.bytedeco.pytorch.InputArchive.)]
         (.read archive (clojure.core/str prefix) sub-archive)
         (.load ^org.bytedeco.pytorch.Module thing sub-archive)
+        thing))
+
+    (instance? org.bytedeco.pytorch.Optimizer thing)
+    (if (empty? prefix)
+      (do (.load ^org.bytedeco.pytorch.Optimizer thing archive) thing)
+      (with-open [sub-archive (org.bytedeco.pytorch.InputArchive.)]
+        (.read archive (clojure.core/str prefix) sub-archive)
+        (.load ^org.bytedeco.pytorch.Optimizer thing sub-archive)
         thing))
 
     (map? thing)

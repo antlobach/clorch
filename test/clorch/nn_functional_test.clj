@@ -88,3 +88,16 @@
         (is (near? (t/item-float (F/cosine-similarity x1 x2 :dim 0)) 0.0)))
       (testing "Pairwise Distance"
         (is (near? (t/item-float (F/pairwise-distance x1 x2)) (Math/sqrt 2.0)))))))
+
+(deftest scaled-dot-product-attention-test
+  (t/with-torch
+    (let [query (t/randn [1 2 4 8])
+          attention-key (t/randn [1 2 4 8])
+          value (t/randn [1 2 4 8])
+          actual (F/scaled-dot-product-attention query attention-key value)
+          scores (t/mul
+                  (t/matmul query (t/transpose attention-key -2 -1))
+                  (/ 1.0 (Math/sqrt 8.0)))
+          expected (t/matmul (F/softmax scores -1) value)]
+      (is (= [1 2 4 8] (t/size actual)))
+      (is (t/allclose actual expected {:rtol 1e-4 :atol 1e-5})))))

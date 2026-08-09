@@ -2,6 +2,7 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io])
   (:import [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
+           [java.util SplittableRandom]
            [java.util.concurrent Callable Future LinkedBlockingQueue ThreadFactory ThreadPoolExecutor TimeUnit TimeoutException]
            [java.util.concurrent.atomic AtomicInteger]))
 
@@ -27,6 +28,11 @@
 (defprotocol IProcessDataset
   (process-spec [this] "Returns EDN-serializable worker spec, e.g. {:factory 'my.ns/mk-ds :args [...]}"))
 
+(defprotocol ISampler
+  (sample-indices [this] "Returns this rank's indices for the current epoch.")
+  (set-epoch! [this epoch] "Changes the deterministic shuffle epoch.")
+  (sampler-state [this] "Returns checkpointable sampler state.")
+  (load-sampler-state! [this state] "Restores checkpointable sampler state."))
 (def ^:private javadataset-extension
   (delay
     (let [cls (Class/forName "org.bytedeco.pytorch.JavaDataset")]
@@ -279,15 +285,130 @@
              :get-item (fn [idx] {:data (select X-t 0 idx)
                                   :target (select y-t 0 idx)}))))
 
+(defn- ceil-div [dividend divisor]
+  (quot (+ dividend (dec divisor)) divisor))
+
+(defn- shuffled-range [n seed]
+  (let [values (long-array (range n))
+        random (SplittableRandom. (long seed))]
+    (loop [i (dec n)]
+      (when (pos? i)
+        (let [j (.nextInt random (inc i))
+              tmp (aget values i)]
+          (aset-long values i (aget values j))
+          (aset-long values j tmp)
+          (recur (dec i)))))
+    (vec values)))
+
+(defn- sampler-size [dataset-size replicas drop-last?]
+  (if drop-last?
+    (if (zero? (mod dataset-size replicas))
+      (quot dataset-size replicas)
+      (max 0 (ceil-div (- dataset-size replicas) replicas)))
+    (ceil-div dataset-size replicas)))
+
+(deftype DistributedSampler
+         [dataset-size replicas rank shuffle? seed drop-last? epoch]
+  ISampler
+  (sample-indices [_]
+    (let [base (if shuffle?
+                 (shuffled-range dataset-size (+ seed @epoch))
+                 (vec (range dataset-size)))
+          samples-per-rank (sampler-size dataset-size replicas drop-last?)
+          total-size (* samples-per-rank replicas)
+          indices (cond
+                    (zero? total-size) []
+                    drop-last? (subvec base 0 total-size)
+                    (= total-size dataset-size) base
+                    :else (into base (take (- total-size dataset-size)
+                                           (cycle base))))]
+      (->> indices
+           (drop rank)
+           (take-nth replicas)
+           (take samples-per-rank)
+           vec)))
+  (set-epoch! [this next-epoch]
+    (when (neg? next-epoch)
+      (throw (ex-info "Sampler epoch must be non-negative"
+                      {:epoch next-epoch})))
+    (reset! epoch (long next-epoch))
+    this)
+  (sampler-state [_]
+    {:epoch @epoch
+     :seed seed
+     :rank rank
+     :replicas replicas
+     :dataset-size dataset-size
+     :drop-last? drop-last?
+     :shuffle? shuffle?})
+  (load-sampler-state! [this state]
+    (doseq [[field expected] [[:seed seed]
+                              [:rank rank]
+                              [:replicas replicas]
+                              [:dataset-size dataset-size]
+                              [:drop-last? drop-last?]
+                              [:shuffle? shuffle?]]]
+      (when-not (= expected (get state field))
+        (throw (ex-info "Sampler checkpoint is incompatible"
+                        {:field field
+                         :expected expected
+                         :actual (get state field)}))))
+    (set-epoch! this (:epoch state)))
+  clojure.lang.Seqable
+  (seq [this]
+    (seq (sample-indices this)))
+  clojure.lang.ILookup
+  (valAt [this lookup-key]
+    (.valAt this lookup-key nil))
+  (valAt [_ lookup-key not-found]
+    (case lookup-key
+      :dataset-size dataset-size
+      :num-replicas replicas
+      :rank rank
+      :shuffle? shuffle?
+      :seed seed
+      :drop-last? drop-last?
+      :epoch @epoch
+      not-found)))
+
+(defn distributed-sampler
+  "Partitions a dataset deterministically across distributed ranks.
+
+  Defaults :num-replicas and :rank from WORLD_SIZE and RANK. Call set-epoch!
+  before each epoch so every rank applies the same new shuffle."
+  [dataset-source & args]
+  (let [options (if (map? (first args)) (first args) (apply hash-map args))
+        dataset-size (if (number? dataset-source) (long dataset-source) (long (get-size dataset-source)))
+        replicas (long (or (:num-replicas options)
+                           (some-> (System/getenv "WORLD_SIZE") Long/parseLong)
+                           1))
+        rank (long (or (:rank options)
+                       (some-> (System/getenv "RANK") Long/parseLong)
+                       0))
+        shuffle? (get options :shuffle? true)
+        seed (long (get options :seed 0))
+        drop-last? (get options :drop-last? false)]
+    (when (neg? dataset-size)
+      (throw (ex-info "Dataset size must be non-negative"
+                      {:dataset-size dataset-size})))
+    (when-not (pos? replicas)
+      (throw (ex-info "Sampler replica count must be positive"
+                      {:num-replicas replicas})))
+    (when-not (<= 0 rank (dec replicas))
+      (throw (ex-info "Sampler rank is outside replica range"
+                      {:rank rank :num-replicas replicas})))
+    (DistributedSampler. dataset-size replicas rank shuffle? seed drop-last? (atom 0))))
+
 (defn- resolve-worker-backend [num-workers worker-backend]
   (if (= worker-backend :auto)
     (if (pos? num-workers) :process :thread)
     worker-backend))
 
-(deftype ClorchDataloader [ds batch-size shuffle? idxs drop-last? num-workers prefetch-factor collate-fn worker-backend timeout-ms worker-init-fn]
+(deftype ClorchDataloader [ds batch-size shuffle? sampler idxs drop-last? num-workers prefetch-factor collate-fn worker-backend timeout-ms worker-init-fn]
   clojure.lang.Seqable
   (seq [_]
-    (let [chunks (build-chunks idxs batch-size drop-last?)]
+    (let [epoch-indices (if sampler (sample-indices sampler) idxs)
+          chunks (build-chunks epoch-indices batch-size drop-last?)]
       (cond
         (and (pos? num-workers) (= worker-backend :process))
         (seq (process-parallel-batches ds chunks collate-fn num-workers prefetch-factor timeout-ms worker-init-fn))
@@ -297,6 +418,9 @@
 
         :else
         (map #(build-batch ds % collate-fn) chunks))))
+  java.lang.Iterable
+  (iterator [this]
+    (clojure.lang.RT/iter (seq this)))
   clojure.lang.ILookup
   (valAt [this k] (.valAt this k nil))
   (valAt [_ k not-found]
@@ -304,7 +428,8 @@
       :dataset ds
       :batch-size batch-size
       :shuffle? shuffle?
-      :indices idxs
+      :sampler sampler
+      :indices (if sampler (sample-indices sampler) idxs)
       :drop-last? drop-last?
       :num-workers num-workers
       :prefetch-factor prefetch-factor
@@ -316,7 +441,7 @@
 
 (defn dataloader [ds & args]
   (let [opts (if (map? (first args)) (first args) (apply hash-map args))
-        {:keys [batch-size shuffle? drop-last? num-workers prefetch-factor collate-fn worker-backend timeout-ms worker-init-fn]
+        {:keys [batch-size shuffle? sampler drop-last? num-workers prefetch-factor collate-fn worker-backend timeout-ms worker-init-fn]
          :or {batch-size 32
               shuffle? true
               drop-last? false
@@ -326,15 +451,21 @@
               worker-backend :auto
               timeout-ms nil
               worker-init-fn nil}} opts
+        _ (when (and sampler (contains? opts :shuffle?) shuffle?)
+            (throw (ex-info "A dataloader with a sampler cannot also shuffle"
+                            {:shuffle? shuffle?})))
         _ (when (= "org.bytedeco.pytorch.JavaDataset" (.getName (class ds)))
             (ensure-javadataset-extension!))
         worker-backend (resolve-worker-backend num-workers worker-backend)
         n (get-size ds)
-        idxs (if shuffle?
-               (let [randperm (torch-fn :randperm)
-                     item-float (torch-fn :item-float)
-                     tseq (torch-fn :tseq)
-                     perm (randperm n)]
-                 (mapv #(long (item-float %)) (tseq perm)))
-               (vec (clojure.core/range n)))]
-    (->ClorchDataloader ds batch-size shuffle? idxs drop-last? num-workers prefetch-factor collate-fn worker-backend timeout-ms worker-init-fn)))
+        idxs (when-not sampler
+               (if shuffle?
+                 (let [randperm (torch-fn :randperm)
+                       item-float (torch-fn :item-float)
+                       tseq (torch-fn :tseq)
+                       perm (randperm n)]
+                   (mapv #(long (item-float %)) (tseq perm)))
+                 (vec (clojure.core/range n))))]
+    (->ClorchDataloader ds batch-size (and shuffle? (nil? sampler)) sampler idxs
+                        drop-last? num-workers prefetch-factor collate-fn
+                        worker-backend timeout-ms worker-init-fn)))
