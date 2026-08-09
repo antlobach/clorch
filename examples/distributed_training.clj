@@ -77,15 +77,17 @@
           :sampler sampler
           :scaler scaler
           :state {:epoch epochs :global-step @global-step}}))
-      (let [parameter (.get (nn/parameters model) 0)
-            rank-zero-parameter (.clone ^Tensor parameter)]
-        (dist/broadcast! process-group rank-zero-parameter {:root-rank 0})
+      (let [model-parameters (t/->vector (nn/parameters model))
+            rank-zero-parameters (mapv #(.clone ^Tensor %) model-parameters)]
+        (dist/broadcast! process-group rank-zero-parameters {:root-rank 0})
         {:rank rank
          :steps @global-step
          :loss @last-loss
          :precision precision
          :parameters-synchronized?
-         (.allclose ^Tensor parameter ^Tensor rank-zero-parameter)}))))
+         (every? true?
+                 (map #(.allclose ^Tensor %1 ^Tensor %2)
+                      model-parameters rank-zero-parameters))}))))
 
 (defn run-local!
   "Launches one training worker JVM per CUDA device and waits for completion."

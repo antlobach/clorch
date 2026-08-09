@@ -97,16 +97,29 @@
        :buffer buffer
        :views views
        :remaining (atom (count indices))
-       :gradients (atom (vec (repeat (count indices) nil)))
        :lock (Object.)})))
 
+(defn- commit-bucket-gradients! [context bucket]
+  (with-open [divisor (Scalar. (double (:world-size context)))]
+    (.div_ ^Tensor (:buffer bucket) divisor))
+  (doseq [slot (range (count (:indices bucket)))]
+    (let [^Tensor parameter
+          (.get ^TensorVector (:parameters bucket) (long slot))
+          ^Tensor gradient (.grad parameter)]
+      (when-not (.defined gradient)
+        (throw (ex-info "Backward pass did not materialize a parameter gradient"
+                        {:parameter-index ((:indices bucket) slot)})))
+      (.copy_ gradient
+              (.get ^TensorVector (:views bucket) (long slot))))))
+
 (defn- await-pending! [context pending]
-  (let [works (locking pending
-                (let [works @pending]
-                  (reset! pending [])
-                  works))]
-    (doseq [work works]
-      (dist/await! work (:timeout-ms context)))))
+  (let [entries (locking pending
+                  (let [entries @pending]
+                    (reset! pending [])
+                    entries))]
+    (doseq [{:keys [work bucket]} entries]
+      (dist/await! work (:timeout-ms context))
+      (commit-bucket-gradients! context bucket))))
 
 (defn- reset-prior-gradient! [^Tensor parameter ^Tensor gradient]
   (let [prior (.grad parameter)]
@@ -116,15 +129,10 @@
 
 (defn- complete-bucket!
   [context bucket pending]
-  (let [buffer (:buffer bucket)
-        work (dist/all-reduce! context buffer {:op :sum :async? true})]
-    (.div_ ^Tensor buffer (Scalar. (double (:world-size context))))
-    (doseq [slot (range (count (:indices bucket)))]
-      (.copy_ ^Tensor (@(:gradients bucket) slot)
-              (.get ^TensorVector (:views bucket) (long slot))))
-    (swap! pending conj work)
-    (reset! (:remaining bucket) (count (:indices bucket)))
-    (reset! (:gradients bucket) (vec (repeat (count (:indices bucket)) nil)))))
+  (let [work (dist/all-reduce! context (:buffer bucket)
+                               {:op :sum :async? true})]
+    (swap! pending conj {:work work :bucket bucket})
+    (reset! (:remaining bucket) (count (:indices bucket)))))
 
 (defn- gradient-hook
   [context bucket slot ^Tensor parameter synchronize? pending classloader]
@@ -139,7 +147,6 @@
           (locking bucket-lock
             (.copy_ ^Tensor (.get ^TensorVector (:views bucket) (long slot))
                     gradient)
-            (swap! (:gradients bucket) assoc slot gradient)
             (when (zero? (swap! (:remaining bucket) dec))
               (complete-bucket! context bucket pending)))))
       gradient-base)))

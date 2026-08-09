@@ -33,6 +33,47 @@
   (let [values (nn/parameters model)]
     (mapv #(.get values (long %)) (range (.size values)))))
 
+(defn ddp-all-parameter-worker [{:keys [rank process-group]}]
+  (preload!)
+  (let [model (nn/to (nn/linear 2 1) :cuda)
+        optimizer (optim/sgd (nn/parameters model) :lr 0.1)
+        features (if (zero? rank)
+                   [[1.0 2.0] [2.0 -1.0]]
+                   [[-1.0 1.0] [0.5 3.0]])
+        targets (if (zero? rank)
+                  [[0.5] [1.0]]
+                  [[-0.5] [2.0]])]
+    (with-open [parallel-model
+                (ddp/distributed-data-parallel
+                 model {:process-group process-group :bucket-cap-mb 1.0})]
+      (optim/zero-grad optimizer)
+      (let [input (torch/tensor features {:dtype :float32 :device :cuda})
+            target (torch/tensor targets {:dtype :float32 :device :cuda})
+            loss (F/mse-loss (nn/forward parallel-model input) target)]
+        (autograd/backward loss))
+      (ddp/optimizer-step! parallel-model optimizer)
+      (let [model-parameters (parameters model)
+            rank-zero-parameters (mapv #(.clone ^Tensor %) model-parameters)]
+        (dist/broadcast! process-group rank-zero-parameters {:root-rank 0})
+        (check! (every? true?
+                        (map #(.allclose ^Tensor %1 ^Tensor %2)
+                             model-parameters rank-zero-parameters))
+                "DDP did not synchronize every model parameter"
+                {:rank rank})
+        {:rank rank :parameters-synchronized? true}))))
+
+(defn- verify-two-device-ddp! []
+  (when (<= 2 (cuda/device-count))
+    (let [job (dist/launch! {:nproc-per-node 2
+                             :devices [0 1]
+                             :main 'clorch.cuda-smoke-test/ddp-all-parameter-worker
+                             :timeout-ms 120000})]
+      (dist/await-job! job 180000)
+      (check! (= {0 0, 1 0} (get-in (dist/job-status job)
+                                    [:state :exit-codes]))
+              "Two-rank DDP worker failed"
+              {:status (dist/job-status job)}))))
+
 (defn- verify-launcher-failure! []
   (let [job (dist/launch! {:nproc-per-node 1
                            :devices [0]
@@ -131,6 +172,7 @@
             (io/delete-file checkpoint true)
             (io/delete-file (str checkpoint ".edn") true))))
       (verify-launcher-failure!)
+      (verify-two-device-ddp!)
       (println "CUDA, NCCL, DDP, AMP, fused attention, and checkpoint smoke passed.")
       true)))
 
