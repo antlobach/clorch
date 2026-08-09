@@ -38,6 +38,18 @@ Start a REPL from the project directory:
 clj
 ```
 
+### Supported runtime
+
+| Component | Supported version |
+|---|---|
+| Java | OpenJDK/Temurin 21 through 25; CI runs the full 21–25 matrix |
+| Clojure | Clojure 1.12.x |
+| Clojure CLI | A current 1.12.x CLI; CI uses `1.12.5.1664` |
+| Native PyTorch | JavaCPP PyTorch `2.10.0-1.5.13` |
+
+Use a JDK, not a JRE. Java 24 and 25 should be started with
+`--enable-native-access=ALL-UNNAMED` for JavaCPP native loading.
+
 ## Quick start
 
 ### Tensors and autograd
@@ -104,11 +116,14 @@ Non-trainable params: 0
 
 The constructor arguments configure the model, the binding vector registers modules or parameters, and the `forward` form defines execution. Registered fields participate in `nn/parameters`, `nn/to`, and state dictionaries. Read [Custom Models with `defmodel`](docs/nn.md#custom-models-with-defmodel) or the [minimal source example](examples/simple.clj).
 
-## CPU and CUDA
+## CPU, CUDA, and multi-GPU training
 
-Clorch selects the native backend when `clorch.torch` loads. It uses CUDA when GPU natives are available and NVIDIA hardware is detected; otherwise it loads the CPU backend.
+Clorch selects the native backend when `clorch.torch` loads. It uses CUDA when
+GPU natives are available and NVIDIA hardware is detected; otherwise it loads
+the CPU backend.
 
-Backend selection does not move tensors or models. Choose a device once, then place models and data on it:
+Backend selection does not move tensors or models. Choose a device once, then
+place models and data on it:
 
 ```clojure
 (require '[clorch.cuda :as cuda])
@@ -121,9 +136,127 @@ Backend selection does not move tensors or models. Choose a device once, then pl
 Environment overrides:
 
 - `CLORCH_FORCE_CPU=1` forces the CPU backend.
-- `CLORCH_FORCE_GPU=1` requests the CUDA backend. It still requires compatible natives, hardware, and an NVIDIA driver.
+- `CLORCH_FORCE_GPU=1` requests the CUDA backend. It still requires compatible
+  native libraries, hardware, and an NVIDIA driver.
 
-Clorch currently supports single-device training. Distributed training, DDP, FSDP, collectives, and distributed checkpointing are not implemented.
+### Multi-GPU requirements
+
+Distributed training uses one worker JVM per GPU and NCCL for communication.
+The managed launcher covers multiple GPUs on one Linux host.
+
+- Two or more NVIDIA GPUs visible to the same process
+- A working NVIDIA driver with CUDA 13 support
+- CUDA 13.1 user-space libraries, including cuBLAS
+- cuDNN 9 and NCCL 2; the validated stack uses cuDNN 9.19 and NCCL 2.29.2
+- Java 21 through 25 and Clojure 1.12.x
+- One distinct CUDA device per rank
+- Enough host RAM and CUDA VRAM for one model replica per rank
+- A writable checkpoint directory and an available local TCP port
+
+For an Ubuntu host configured with NVIDIA's CUDA package repository, the
+required runtime packages are:
+
+```bash
+sudo apt-get update
+sudo apt-get install cuda-libraries-13-1 libcudnn9-cuda-13 libnccl2
+```
+
+Confirm that the host exposes each GPU before starting Clojure:
+
+```bash
+nvidia-smi -L
+java -version
+clojure -Sdescribe
+```
+
+Set native-loading variables before the JVM starts. `JAVA_TOOL_OPTIONS` is
+inherited by launcher-created worker JVMs:
+
+```bash
+export CLORCH_FORCE_GPU=1
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+export JAVA_TOOL_OPTIONS="--enable-native-access=ALL-UNNAMED"
+
+CLOJURE_DISABLE_RLWRAP=1 clojure -M:dev
+```
+
+Check CUDA from the REPL:
+
+```clojure
+(require '[clorch.cuda :as cuda]
+         '[clorch.torch :as t])
+
+{:available (cuda/available?)
+ :devices (cuda/device-count)}
+;; => {:available true, :devices 2}
+```
+
+### Launch the distributed training example
+
+Clone this repository and start its nREPL so the `examples` path is available.
+The example below launches ranks for physical devices 0 and 1, waits for both
+workers, and returns status plus per-rank logs:
+
+```clojure
+(require '[distributed-training :as training])
+
+(def result
+  (training/run-local!
+   [0 1]
+   {:epochs 4
+    :sample-count 1024
+    :batch-size 32
+    :accumulation 2
+    :precision :bfloat16
+    :checkpoint-path "/checkpoints/clorch-ddp.pt"}))
+```
+
+Use `:float16` for autocast with dynamic gradient scaling, or `:bfloat16` for
+autocast without a scaler. `:accumulation 2` performs two micro-batches per
+optimizer step and suppresses DDP synchronization until the final
+micro-batch.
+
+The launcher sets `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, `LOCAL_WORLD_SIZE`,
+`MASTER_ADDR`, `MASTER_PORT`, and `CUDA_VISIBLE_DEVICES` for every child. Worker
+code should place its model and batches on `:cuda`; the launcher maps that
+logical device to the assigned physical GPU.
+
+For an application worker, launch a namespace-qualified function:
+
+```clojure
+(require '[clorch.distributed :as dist])
+
+(def job
+  (dist/launch!
+   {:nproc-per-node 2
+    :devices [0 1]
+    :main 'my.training/train-worker
+    :args {:epochs 10}
+    :timeout-ms 300000}))
+
+(dist/job-status job)
+(dist/await-job! job)
+(dist/job-logs job 0)
+```
+
+Every rank must execute collectives in the same order and train from a
+disjoint `distributed-sampler` partition. Create the model on `:cuda` before
+wrapping it with `distributed-data-parallel`, call `data/set-epoch!` each
+epoch, and use `ddp/optimizer-step!` instead of stepping the optimizer
+directly. Only rank zero writes checkpoints; all ranks participate in save and
+restore barriers.
+
+Run the GPU release check after configuring the host:
+
+```bash
+CLORCH_FORCE_GPU=1 clojure -Sthreads 1 -M -m clorch.release-check --mode gpu
+```
+
+On a host with at least two GPUs, the CUDA smoke includes a two-rank DDP check
+that verifies every model parameter remains synchronized. Read
+[Distributed CUDA Training](docs/distributed.md) for worker code, collectives,
+sampling, AMP, gradient accumulation, failure handling, and checkpoint
+restore.
 
 ## Native memory
 

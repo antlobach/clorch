@@ -5,9 +5,9 @@ Clorch runs one JVM per CUDA device and coordinates ranks with NCCL. The public 
 ## Requirements
 
 - Linux with NVIDIA GPUs and a working driver
-- Java 25 or newer for the managed launcher
+- Java 21 through 25 and Clojure 1.12.x
 - One distinct CUDA device per local rank
-- GPU-enabled JavaCPP PyTorch and CUDA native libraries on the classpath
+- CUDA 13.1 user-space libraries, cuDNN 9, and NCCL 2 on the classpath
 
 Clorch currently supports the `:nccl` backend. It does not provide Gloo, RPC, FSDP, tensor parallelism, or elastic membership.
 
@@ -105,7 +105,11 @@ Create the model on the rank-local CUDA device before wrapping it:
   (ddp/optimizer-step! parallel-model optimizer))
 ```
 
-The constructor verifies parameter signatures across ranks and broadcasts parameters from rank zero. Backward hooks copy gradients into reusable buckets and start asynchronous all-reduce operations. `ddp/optimizer-step!` waits for pending reductions before stepping the optimizer.
+The constructor verifies parameter signatures across ranks and broadcasts
+parameters from rank zero. Backward hooks copy local gradients into reusable
+buckets and start asynchronous all-reduce operations. `ddp/optimizer-step!`
+waits for pending reductions, commits every averaged bucket back to the model
+gradients, and then steps the optimizer.
 
 Each synchronized backward pass must produce a gradient for every trainable parameter. `:find-unused-parameters? true` and `:gradient-as-bucket-view? true` are unsupported and fail during construction.
 
@@ -185,4 +189,8 @@ Rank zero writes the tensor archive and EDN metadata through temporary files, th
 
 ## Current verification scope
 
-The release suite covers CPU behavior and a single-GPU CUDA path, including NCCL world size one, DDP backward, AMP overflow handling, fused scaled-dot-product attention, checkpoints, worker failures, and process cleanup. Two-rank execution requires a machine with at least two visible NVIDIA GPUs and belongs in release validation for changes to collectives or DDP.
+The release suite covers CPU behavior and CUDA execution, including NCCL, DDP
+backward, AMP overflow handling, fused scaled-dot-product attention,
+checkpoints, worker failures, and process cleanup. Two-rank validation on two
+RTX A5000 GPUs covers NCCL gradient reduction, parameter synchronization,
+bfloat16 AMP, gradient accumulation, and rank-zero checkpoint creation.
