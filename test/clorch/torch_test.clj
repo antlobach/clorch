@@ -96,7 +96,9 @@
                              [:float16 "Half"] [:bfloat16 "BFloat16"]
                              [:complex64 "ComplexFloat"] [:complex128 "ComplexDouble"]]]
         (let [t (torch/ones [2] {:dtype kw})]
-          (is (= expected (.toString (.scalar_type t)))))))))
+          (is (= expected (.toString (.scalar_type t))))))
+      (is (= :float16 (torch/dtype (torch/ones [2] {:dtype :float16}))))
+      (is (= :bfloat16 (torch/dtype (torch/ones [2] {:dtype :bfloat16})))))))
 
 (deftest float64-tensor-construction-test
   (testing "Float64 tensors preserve dtype and values"

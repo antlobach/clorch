@@ -1,6 +1,7 @@
 (ns clorch.cuda
   (:require [clorch.platform :as platform])
-  (:import [org.bytedeco.pytorch.global torch]
+  (:import [org.bytedeco.cuda.global cudart]
+           [org.bytedeco.pytorch.global torch]
            [org.bytedeco.javacpp Loader]))
 
 ;; Force loading with GPU extension if possible
@@ -29,6 +30,31 @@
   "Returns the number of GPUs available."
   []
   (torch/cuda_device_count))
+
+(defn- check-runtime! [operation status]
+  (when-not (= cudart/cudaSuccess status)
+    (throw (ex-info (str operation " failed: "
+                         (.getString (cudart/cudaGetErrorString status)))
+                    {:operation operation
+                     :status status}))))
+
+(defn set-device!
+  "Sets the CUDA device used by the current worker thread and returns its index."
+  [device-index]
+  (let [device-index (clojure.core/int device-index)]
+    (when-not (<= 0 device-index (dec (device-count)))
+      (throw (ex-info "CUDA device index is out of range"
+                      {:device-index device-index
+                       :device-count (device-count)})))
+    (check-runtime! "cudaSetDevice" (cudart/cudaSetDevice device-index))
+    device-index))
+
+(defn current-device
+  "Returns the CUDA device index selected for the current worker thread."
+  []
+  (let [device-index (int-array 1)]
+    (check-runtime! "cudaGetDevice" (cudart/cudaGetDevice device-index))
+    (aget device-index 0)))
 
 (defn synchronize
   "Waits for all kernels in all streams on a CUDA device to complete."

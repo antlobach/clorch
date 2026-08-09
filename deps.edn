@@ -1,8 +1,6 @@
 {:paths ["src" "test" "examples"]
- :deps {org.bytedeco/pytorch-platform {:mvn/version "2.1.2-1.5.10"}
-        org.bytedeco/pytorch-platform-gpu {:mvn/version "2.1.2-1.5.10"}
-        org.bytedeco/cuda-platform-redist {:mvn/version "12.3-8.9-1.5.10"}
-        org.bytedeco/openblas-platform {:mvn/version "0.3.26-1.5.10"}
+ :deps {org.bytedeco/pytorch-platform {:mvn/version "2.10.0-1.5.13"}
+        org.bytedeco/pytorch-platform-gpu {:mvn/version "2.10.0-1.5.13"}
         cnuernber/dtype-next {:mvn/version "11.007"}
         nrepl/nrepl {:mvn/version "1.1.1"}
         org.clojure/data.json {:mvn/version "2.5.0"}
