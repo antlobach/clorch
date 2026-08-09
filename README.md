@@ -47,6 +47,34 @@ clj
 | Clojure CLI | A current 1.12.x CLI; CI uses `1.12.5.1664` |
 | Native PyTorch | JavaCPP PyTorch `2.10.0-1.5.13` |
 
+The CPU test matrix keeps the native stack fixed while changing the JVM:
+
+```text
+Java 21 ┐
+Java 22 │
+Java 23 ├─ PyTorch 2.10 + JavaCPP 1.5.13 CPU natives
+Java 24 │
+Java 25 ┘
+```
+
+This matrix verifies Java compatibility for the pinned native stack. It does
+not claim compatibility with other PyTorch or JavaCPP Presets versions.
+
+### Multi-GPU distributed training
+
+```text
+Java 25
+PyTorch/LibTorch 2.10
+JavaCPP 1.5.13
+CUDA 13.1
+cuDNN 9.19
+NCCL 2.29.2
+2× RTX A5000
+```
+
+This is the complete native stack used for two-rank CUDA, NCCL, DDP, AMP,
+checkpoint, and all-parameter synchronization verification.
+
 Use a JDK, not a JRE. Java 24 and 25 should be started with
 `--enable-native-access=ALL-UNNAMED` for JavaCPP native loading.
 
