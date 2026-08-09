@@ -72,10 +72,12 @@
     (torch/log_softmax (t/->tensor tensor) (long dim) (org.bytedeco.pytorch.ScalarTypeOptional.))))
 
 (defn hardshrink [tensor & [lambd]]
-  (torch/hardshrink (t/->tensor tensor) (double (or lambd 0.5))))
+  (with-open [threshold (org.bytedeco.pytorch.Scalar. (double (or lambd 0.5)))]
+    (torch/hardshrink (t/->tensor tensor) threshold)))
 
 (defn softshrink [tensor & [lambd]]
-  (torch/softshrink (t/->tensor tensor) (double (or lambd 0.5))))
+  (with-open [threshold (org.bytedeco.pytorch.Scalar. (double (or lambd 0.5)))]
+    (torch/softshrink (t/->tensor tensor) threshold)))
 
 (defn tanhshrink [tensor]
   (torch/tanhshrink (t/->tensor tensor)))
