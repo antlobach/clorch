@@ -1,5 +1,6 @@
 (ns clorch.cuda-smoke-test
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clorch.amp :as amp]
             [clorch.autograd :as autograd]
             [clorch.cuda :as cuda]
@@ -31,6 +32,28 @@
 (defn- parameters [model]
   (let [values (nn/parameters model)]
     (mapv #(.get values (long %)) (range (.size values)))))
+
+(defn- verify-launcher-failure! []
+  (let [job (dist/launch! {:nproc-per-node 1
+                           :devices [0]
+                           :main 'clorch.cuda-smoke-test/missing-worker
+                           :args {}})
+        failure (try
+                  (dist/await-job! job 120000)
+                  nil
+                  (catch clojure.lang.ExceptionInfo exception
+                    (ex-data exception)))
+        status (dist/job-status job)
+        logs (dist/job-logs job 0)]
+    (check! (= :failed (:state failure))
+            "Launcher did not propagate worker failure"
+            {:failure failure})
+    (check! (every? (complement :alive?) (:workers status))
+            "Launcher left a failed worker alive"
+            {:status status})
+    (check! (str/includes? (:stderr logs) "does not exist")
+            "Worker logs omitted the failure diagnostic"
+            {:logs logs})))
 
 (defn run-test []
   (preload!)
@@ -107,6 +130,7 @@
                     "Model weights did not restore" {})
             (io/delete-file checkpoint true)
             (io/delete-file (str checkpoint ".edn") true))))
+      (verify-launcher-failure!)
       (println "CUDA, NCCL, DDP, AMP, fused attention, and checkpoint smoke passed.")
       true)))
 
