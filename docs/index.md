@@ -5,7 +5,7 @@ title: Home
 
 # Clorch
 
-**Clorch** is a high-performance deep learning library for Clojure with CPU and NVIDIA CUDA GPU execution. Its tensor, autograd, neural-network, optimizer, data, and device APIs follow PyTorch's names and behavior closely while remaining idiomatic and REPL-friendly.
+**Clorch** is a high-performance deep learning library for Clojure with CPU and NVIDIA CUDA GPU execution. Its tensor, autograd, neural-network, optimizer, data, AMP, and NCCL distributed APIs follow PyTorch's names and behavior closely while remaining idiomatic and REPL-friendly.
 
 ---
 
@@ -16,6 +16,7 @@ title: Home
 *   **Broad PyTorch Coverage**: Supports more than 100 tensor operations, activations, and layers.
 *   **Transparent Memory**: Uses deterministic `with-torch` scopes to prevent native memory bloat.
 *   **LLM Architecture**: Includes embeddings, RMSNorm, RoPE, grouped-query attention, SwiGLU, KV caching, and autoregressive generation.
+*   **Distributed CUDA**: Provides NCCL collectives, local rank launch, DDP gradient synchronization, distributed sampling, AMP, and rank-zero checkpoints.
 
 ---
 
@@ -63,6 +64,7 @@ title: Home
 - [**Functional API**](functional.md): Stateless operations and low-level control.
 - [**Activation Functions**](activations.md): Complete list of 25+ supported activations.
 - [**Loss Functions**](losses.md): Criteria for regression and classification.
+- [**Distributed CUDA Training**](distributed.md): Worker launch, collectives, DDP, AMP, sampling, and checkpoints.
 
 ### Operations & Stability
 - [**Memory Management**](memory.md): How to use `with-torch` effectively.
@@ -92,3 +94,4 @@ Check out the `examples/` directory for full implementations:
 *   `autograd_tutorial.clj`: Basic math and gradients.
 *   `modern_llama.clj`: Llama-3 style components (RoPE, GQA, SwiGLU).
 *   `synthetic.clj`: A complete training loop from data to optimization.
+*   `distributed_training.clj`: Multi-process NCCL DDP training with AMP and checkpointing.

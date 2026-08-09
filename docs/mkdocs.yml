@@ -25,6 +25,7 @@ nav:
       - Optimizers: optimizers.md
       - Initialization: init.md
   - Autograd: autograd.md
+  - Distributed CUDA Training: distributed.md
   - PyTorch Parity: pytorch-parity.md
   - Memory Management: memory.md
   - Performance & Profiling: profiling.md

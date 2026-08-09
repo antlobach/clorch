@@ -10,13 +10,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4c1.svg" alt="MIT license"></a>
 </p>
 
-Clorch is a Clojure deep-learning library backed by LibTorch. It provides PyTorch-style tensors, autograd, neural-network modules, optimizers, data loading, and explicit CPU/CUDA device placement through a REPL-friendly API.
+Clorch is a Clojure deep-learning library backed by LibTorch. It provides PyTorch-style tensors, autograd, neural-network modules, optimizers, data loading, explicit CPU/CUDA placement, and NCCL distributed training through a REPL-friendly API.
 
 ## Highlights
 
-- **Tensor and training APIs:** tensor operations, autograd, losses, optimizers, data loaders, state dictionaries, and native-memory scopes
+- **Tensor and training APIs:** tensor operations, autograd, losses, optimizers, data loaders, state dictionaries, AMP, and native-memory scopes
 - **Model building:** standard layers, custom `nn/defmodel` modules, architecture summaries, and checkpoint loading
-- **LLM components:** RMSNorm, RoPE, grouped-query attention, SwiGLU, causal masks, KV caches, and autoregressive generation
+- **Distributed CUDA:** NCCL collectives, managed rank processes, distributed sampling, synchronous DDP, gradient accumulation, and rank-zero checkpoints
+- **LLM components:** RMSNorm, RoPE, grouped-query attention, SwiGLU, fused scaled-dot-product attention, causal masks, KV caches, and autoregressive generation
 - **NanoChat-inspired example:** a compact, single-device Llama-style training and chat demo with checkpointing and optional KV caching, inspired by [Karpathy's NanoChat](https://github.com/karpathy/nanochat)
 - **CPU and CUDA:** native LibTorch execution with explicit tensor and model placement
 
@@ -151,6 +152,7 @@ Full documentation: **[antlobach.github.io/clorch](https://antlobach.github.io/c
 | [Neural networks](docs/nn.md) | Modules, custom models, layers, and summaries |
 | [Functional API](docs/functional.md) | Stateless layers, activations, pooling, and losses |
 | [Optimizers](docs/optimizers.md) | SGD, Adam, AdamW, RMSprop, and Adagrad |
+| [Distributed training](docs/distributed.md) | NCCL collectives, worker launch, DDP, AMP, sampling, and checkpoints |
 | [Memory management](docs/memory.md) | Native allocation scopes and pointer lifecycles |
 | [PyTorch parity](docs/pytorch-parity.md) | Measured coverage, current gaps, and roadmap |
 
@@ -164,6 +166,9 @@ Clorch follows PyTorch concepts, but it does not expose every PyTorch symbol. Ch
 |---|---|
 | `torch` | `clorch.torch` |
 | `torch.cuda` | `clorch.cuda` |
+| `torch.amp` | `clorch.amp` |
+| `torch.distributed` | `clorch.distributed` |
+| `DistributedDataParallel` | `clorch.nn.parallel` |
 | `torch.autograd` | `clorch.autograd` |
 | `torch.nn` | `clorch.nn` |
 | `torch.nn.functional` | `clorch.nn.functional` |
@@ -178,7 +183,7 @@ When generating Clorch code:
 - Keep long-lived models and optimizers outside `with-torch`; use one scope per allocating batch or generation step.
 - Return a JVM scalar or `nil` from `with-torch` unless a tensor must escape.
 - Reuse patterns from the [examples](examples/) instead of inventing wrapper APIs.
-- Check [PyTorch Parity](docs/pytorch-parity.md) before assuming support for distributed training, AMP, Flash Attention, or `torch.compile`.
+- Read the [Distributed CUDA Training](docs/distributed.md) guide before generating multi-process training code.
 
 ## Examples
 
@@ -187,10 +192,11 @@ When generating Clorch code:
 - [Synthetic training](examples/synthetic.clj): end-to-end model training
 - [Modern Llama](examples/modern_llama.clj): RoPE, GQA, SwiGLU, and KV caching
 - [Compact Llama chat](examples/nanochat.clj): small-corpus training, checkpointing, and token generation
+- [Distributed CUDA training](examples/distributed_training.clj): NCCL workers, DDP, AMP, accumulation, sampling, and checkpoints
 
 ## Project status
 
-The cross-language comparison suite currently passes 40 of 40 numerical scenarios. The repository's tracked feature catalog marks 268 of approximately 328 capabilities as implemented, or about 81.7%. That catalog does not enumerate the entire upstream PyTorch API.
+The cross-language comparison suite currently passes 40 of 40 numerical scenarios. The tracked feature catalog predates the PyTorch 2.10 distributed-training milestone and needs a version-pinned recount before Clorch publishes another breadth percentage.
 
 Read [PyTorch Parity](docs/pytorch-parity.md) for the capability table and roadmap to 100% of a version-pinned target.
 
@@ -206,6 +212,12 @@ Run the CPU release suite:
 
 ```bash
 clojure -Sthreads 1 -M -m clorch.release-check --mode cpu
+```
+
+Run the GPU release suite on a Linux NVIDIA host:
+
+```bash
+clojure -Sthreads 1 -M -m clorch.release-check --mode gpu
 ```
 
 Run all shipped examples:

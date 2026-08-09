@@ -174,6 +174,8 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 | - `bce-loss`, `bce-with-logits-loss` | [x] |
 | **Similarity** | [x] |
 | - `cosine-similarity`, `pairwise-distance` | [x] |
+| **Fused Attention** | [x] |
+| - `scaled-dot-product-attention` | [x] |
 
 ---
 
@@ -203,6 +205,8 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 | `IDataset` protocol, `dataset`, `defdataset` | [x] |
 | `dataloader` (Thread & Process workers) | [x] |
 | `tensor-dataset` | [x] |
+| `distributed-sampler`, `sample-indices`, `set-epoch!` | [x] |
+| `sampler-state`, `load-sampler-state!` | [x] |
 
 ---
 
@@ -210,8 +214,33 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 
 | Feature | Status |
 |---------|--------|
-| `available?` | [x] |
+| `available?`, `device-count` | [x] |
+| `set-device!`, `current-device` | [x] |
+| `synchronize` | [x] |
+| `manual-seed`, `manual-seed-all` | [x] |
 
+---
+
+### Automatic Mixed Precision (`clorch.amp`)
+
+| Feature | Status |
+|---------|--------|
+| `autocast`, `call-with-autocast` | [x] |
+| `grad-scaler`, `scale-loss`, `backward!`, `step!` | [x] |
+| `scaler-state`, `load-scaler-state!` | [x] |
+
+---
+
+### Distributed Training (`clorch.distributed`, `clorch.nn.parallel`)
+
+| Feature | Status |
+|---------|--------|
+| NCCL process-group lifecycle and rank metadata | [x] |
+| All-reduce, broadcast, reduce, gather, reduce-scatter, all-to-all | [x] |
+| Point-to-point send/receive and barriers | [x] |
+| Managed local worker launch, status, logs, cancellation, failure propagation | [x] |
+| `DistributedDataParallel`, bucketed gradient synchronization, `no-sync` | [x] |
+| Rank-zero model, optimizer, sampler, scaler, CPU RNG, and training checkpoints | [x] |
 ---
 
 ## What's Not Yet Implemented
@@ -262,10 +291,12 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 | Autograd | 5 | ~5 |
 | NN Layers | ~80 | ~20 |
 | Optimizers | 7 | ~10 |
-| Data | 5 | ~5 |
-| CUDA | 1 | ~10 |
-| **Total** | **~268** | **~60** |
+| Data | ~8 | ~4 |
+| CUDA | ~7 | ~8 |
+| AMP | ~6 | ~4 |
+| Distributed | ~20 | ~10 |
+| **Total** | **Pending version-pinned recount** | **Pending version-pinned recount** |
 
 ---
 
-*Last updated: 2026-03-13*
+*Last updated: 2026-08-08*

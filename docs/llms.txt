@@ -1,14 +1,14 @@
 # Clorch
 
-> Clorch is a Clojure deep-learning library backed by LibTorch. It provides PyTorch-style tensors, autograd, neural-network modules, optimizers, data loading, and explicit CPU/CUDA device placement through a REPL-friendly API.
+> Clorch is a Clojure deep-learning library backed by LibTorch. It provides PyTorch-style tensors, autograd, neural-network modules, optimizers, data loading, explicit CPU/CUDA placement, AMP, and NCCL distributed training through a REPL-friendly API.
 
 Clorch follows PyTorch concepts but does not expose every PyTorch symbol. Verify public vars in the linked documentation or source instead of translating Python names mechanically.
 
-Namespace map: `torch` → `clorch.torch`; `torch.cuda` → `clorch.cuda`; `torch.autograd` → `clorch.autograd`; `torch.nn` → `clorch.nn`; `torch.nn.functional` → `clorch.nn.functional`; `torch.optim` → `clorch.optim`; `torch.distributions` → `clorch.distributions`; `torch.linalg` → `clorch.linalg`; `Dataset` and `DataLoader` → `clorch.data`.
+Namespace map: `torch` → `clorch.torch`; `torch.cuda` → `clorch.cuda`; `torch.amp` → `clorch.amp`; `torch.distributed` → `clorch.distributed`; `DistributedDataParallel` → `clorch.nn.parallel`; `torch.autograd` → `clorch.autograd`; `torch.nn` → `clorch.nn`; `torch.nn.functional` → `clorch.nn.functional`; `torch.optim` → `clorch.optim`; `torch.distributions` → `clorch.distributions`; `torch.linalg` → `clorch.linalg`; `Dataset` and `DataLoader` → `clorch.data`.
 
 Runtime rules: resolve one application-level device and place models and tensors explicitly. Keep models and optimizers outside repeated `with-torch` scopes. Use one scope per allocating batch or generation step, returning a JVM scalar or `nil` unless a tensor must escape.
 
-Current limits: single-device training only. Distributed training, AMP, dedicated Flash Attention, and a `torch.compile` equivalent are not implemented. Consult the parity guide before making coverage claims.
+Current limits: distributed execution is NCCL-only and the managed launcher is local to one host. Gloo, RPC, FSDP, tensor parallelism, elastic membership, CUDA RNG checkpointing, and a `torch.compile` equivalent are not implemented. The release suite requires a multi-GPU NVIDIA host to validate more than one rank.
 
 ## Start Here
 
@@ -33,6 +33,7 @@ Current limits: single-device training only. Distributed training, AMP, dedicate
 - [Optimizers](https://raw.githubusercontent.com/antlobach/clorch/main/docs/optimizers.md): SGD, Adam, AdamW, RMSprop, and Adagrad.
 - [Loss functions](https://raw.githubusercontent.com/antlobach/clorch/main/docs/losses.md): Regression and classification losses.
 - [Initialization](https://raw.githubusercontent.com/antlobach/clorch/main/docs/init.md): Parameter initialization helpers.
+- [Distributed CUDA training](https://raw.githubusercontent.com/antlobach/clorch/main/docs/distributed.md): NCCL process groups, collectives, worker lifecycle, DDP, gradient accumulation, AMP, distributed sampling, and checkpoints.
 - [Memory management](https://raw.githubusercontent.com/antlobach/clorch/main/docs/memory.md): Native-memory scopes, retention, release, REPL sessions, and repeated workloads.
 
 ## Examples
@@ -43,6 +44,7 @@ Current limits: single-device training only. Distributed training, AMP, dedicate
 - [Synthetic training](https://raw.githubusercontent.com/antlobach/clorch/main/examples/synthetic.clj): Compact end-to-end supervised training.
 - [Modern Llama](https://raw.githubusercontent.com/antlobach/clorch/main/examples/modern_llama.clj): RMSNorm, RoPE, GQA, SwiGLU, causal masking, and KV caching.
 - [NanoChat-inspired example](https://raw.githubusercontent.com/antlobach/clorch/main/examples/nanochat.clj): Compact single-device Llama-style training, checkpointing, generation, and terminal chat inspired by Karpathy's NanoChat.
+- [Distributed CUDA training](https://raw.githubusercontent.com/antlobach/clorch/main/examples/distributed_training.clj): Local multi-process DDP with AMP, gradient accumulation, distributed sampling, and checkpoints.
 - [LLMs from scratch](https://raw.githubusercontent.com/antlobach/clorch/main/examples/llms_from_scratch.clj): GPT-style transformer construction with custom Clorch modules.
 
 ## Project Status
