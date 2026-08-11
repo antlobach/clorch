@@ -7,6 +7,9 @@
 <p align="center">
   <a href="https://github.com/antlobach/clorch/actions/workflows/ci.yml"><img src="https://github.com/antlobach/clorch/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://antlobach.github.io/clorch/"><img src="https://img.shields.io/badge/docs-online-4051B5?logo=materialformkdocs&logoColor=white" alt="Documentation"></a>
+  <a href="https://antlobach-clorch-182a83cb.mintlify.app"><img src="https://img.shields.io/badge/mintlify-docs-18E299?logo=mintlify&logoColor=white" alt="Mintlify documentation"></a>
+  <a href="https://deepwiki.com/antlobach/clorch"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+  <a href="https://context7.com/antlobach/clorch"><img src="https://img.shields.io/badge/context7-docs-4051B5" alt="Context7 documentation"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4c1.svg" alt="MIT license"></a>
 </p>
 
