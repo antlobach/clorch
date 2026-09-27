@@ -3,6 +3,8 @@
             [clojure.string :as str]
             [clojure.test :as test]))
 
+(set! *warn-on-reflection* true)
+
 (def ^:private excluded-test-namespaces
   '#{clorch.memory-test-suite})
 
@@ -28,6 +30,35 @@
          (remove excluded-test-namespaces)
          sort
          vec)))
+
+(defn discover-src-namespaces []
+  (let [src-dir (io/file "src")]
+    (->> (file-seq src-dir)
+         (filter #(and (.isFile ^java.io.File %)
+                       (str/ends-with? (.getName ^java.io.File %) ".clj")))
+         (map #(file->ns-sym src-dir %))
+         (remove #{'clorch.release-check})
+         sort
+         vec)))
+
+(defn check-reflection!
+  "Loads every src namespace (each sets *warn-on-reflection*) and fails if
+   the compiler reports reflection in any of them. Must run before anything
+   else loads them: warnings are only printed when a namespace compiles."
+  []
+  (println "Checking for reflection warnings...")
+  (let [err (java.io.StringWriter.)]
+    (binding [*err* (java.io.PrintWriter. err)]
+      (doseq [ns-sym (discover-src-namespaces)]
+        (require ns-sym)))
+    (let [warnings (->> (str/split-lines (str err))
+                        (filter #(and (str/starts-with? % "Reflection warning")
+                                      (str/includes? % "clorch/"))))]
+      (when (seq warnings)
+        (run! println warnings)
+        (throw (ex-info "Reflection warnings in src."
+                        {:count (count warnings)})))
+      (println "No reflection warnings."))))
 
 (defn- require-test-namespaces! [ns-syms]
   (doseq [ns-sym ns-syms]
@@ -66,5 +97,6 @@
 (defn -main [& args]
   (let [mode (parse-mode args)]
     (println "Release check mode:" (name mode))
+    (check-reflection!)
     (run-clojure-tests!)
     (maybe-run-cuda-smoke! mode)))

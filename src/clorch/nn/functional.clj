@@ -3,6 +3,8 @@
   (:import [org.bytedeco.pytorch DoubleOptional TensorOptional]
            [org.bytedeco.pytorch.global torch]))
 
+(set! *warn-on-reflection* true)
+
 (defn relu [tensor]
   (torch/relu (t/->tensor tensor)))
 
@@ -211,7 +213,7 @@
 (defn adaptive-avg-pool3d [tensor output-size]
   (torch/adaptive_avg_pool3d (t/->tensor tensor) (long-array (if (number? output-size) [output-size output-size output-size] output-size))))
 
-(defn- ->optional [t]
+(defn- ->optional ^TensorOptional [t]
   (if t
     (org.bytedeco.pytorch.TensorOptional. (t/->tensor t))
     (org.bytedeco.pytorch.TensorOptional.)))
@@ -219,7 +221,7 @@
 (defn linear [input weight & [bias]]
   (torch/linear (t/->tensor input) (t/->tensor weight) (->optional bias)))
 
-(defn- ->lp [params dims]
+(defn- ->lp ^longs [params dims]
   (let [v (cond
             (number? params) (vec (repeatedly dims #(clojure.core/long params)))
             (sequential? params) (mapv clojure.core/long params)
@@ -268,7 +270,7 @@
     (long-array v)))
 
 (defn pad [input padding & {:keys [mode value] :or {mode :constant value 0.0}}]
-  (let [p-arr (if (number? padding)
+  (let [^longs p-arr (if (number? padding)
                 (->pad-array padding (- (count (t/size input)) 2))
                 (long-array (mapv clojure.core/long padding)))]
     (torch/pad (t/->tensor input) p-arr (clojure.core/name mode) (org.bytedeco.pytorch.DoubleOptional. (double value)))))

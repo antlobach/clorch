@@ -3,6 +3,8 @@
             [clojure.string :as str])
   (:import [org.bytedeco.javacpp Loader]))
 
+(set! *warn-on-reflection* true)
+
 (defn- env [k]
   (System/getenv k))
 

@@ -2,16 +2,18 @@
   "Distributed neural-network wrappers backed by direct NCCL collectives."
   (:require [clorch.distributed :as dist]
             [clorch.nn :as nn])
-  (:import [org.bytedeco.pytorch Module Scalar SizeTVector Tensor
+  (:import [org.bytedeco.pytorch Module Optimizer Scalar SizeTVector Store Tensor
             TensorBase TensorTensorHook TensorVector]
            [org.bytedeco.pytorch.global torch]))
+
+(set! *warn-on-reflection* true)
 
 (def ^:dynamic *synchronize-gradients*
   "False inside no-sync so DDP accumulates local gradients without collectives."
   true)
 
 (defn- parameter-vector [model]
-  (let [parameters (nn/parameters model :trainable-only true)]
+  (let [^TensorVector parameters (nn/parameters model :trainable-only true)]
     (when (zero? (.size parameters))
       (throw (ex-info "DistributedDataParallel requires trainable parameters" {})))
     parameters))
@@ -60,13 +62,13 @@
         prefix (str "clorch/ddp/signature/" operation-id "/")
         rank-key (str prefix (:rank context))
         signature (pr-str (parameter-signature parameters))
-        store (:store context)
+        ^Store store (:store context)
         store-keys (org.bytedeco.pytorch.StringVector.)]
     (.set store rank-key signature)
     (dotimes [peer (:world-size context)]
       (.push_back store-keys (str prefix peer)))
     (._wait store store-keys
-            (org.bytedeco.javacpp.chrono.Milliseconds. (:timeout-ms context)))
+            (org.bytedeco.javacpp.chrono.Milliseconds. (long (:timeout-ms context))))
     (let [signatures
           (mapv #(.get_to_str store (str prefix %))
                 (range (:world-size context)))]
@@ -135,7 +137,7 @@
     (reset! (:remaining bucket) (count (:indices bucket)))))
 
 (defn- gradient-hook
-  [context bucket slot ^Tensor parameter synchronize? pending classloader]
+  ^TensorTensorHook [context bucket slot ^Tensor parameter synchronize? pending classloader]
   (proxy [TensorTensorHook] []
     (call [gradient-base]
       ;; Native autograd workers do not inherit the application classloader.
@@ -276,7 +278,7 @@
    (if scaler
      ((requiring-resolve 'clorch.amp/step!) scaler optimizer)
      (do
-       (.step optimizer)
+       (.step ^Optimizer optimizer)
        true))))
 
 (defn reducer-statistics

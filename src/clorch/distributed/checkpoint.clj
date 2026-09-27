@@ -10,6 +10,8 @@
            [org.bytedeco.pytorch Generator]
            [org.bytedeco.pytorch.global torch]))
 
+(set! *warn-on-reflection* true)
+
 (def ^:private checkpoint-version 1)
 
 (defn- metadata-path [path]

@@ -118,6 +118,17 @@
           (is (= [1.0 4.0] (mapv t/item-float (t/tseq (t/minimum x y)))))
           (is (= [2.0 5.0] (mapv t/item-float (t/tseq (t/fmax x y)))))
           (is (= [1.0 4.0] (mapv t/item-float (t/tseq (t/fmin x y)))))))
+      (testing "max/min along a dim"
+        (let [m (t/tensor [[1.0 5.0] [7.0 2.0]])]
+          (is (= [5.0 7.0] (mapv t/item-float (t/tseq (t/max m 1)))))
+          (is (= [1.0 2.0] (mapv t/item-float (t/tseq (t/min m 1)))))
+          (is (= [1 2] (t/size (t/max m 0 :keepdim true))))))
+      (testing "clip"
+        (is (= [1.5 2.0 4.0] (mapv t/item-float (t/tseq (t/clip (t/tensor [1.0 2.0 9.0]) 1.5 4.0))))))
+      (testing "argsort along a dim"
+        (let [m (t/tensor [[3.0 1.0 2.0] [0.0 5.0 4.0]])]
+          (is (= [[1.0 2.0 0.0] [0.0 2.0 1.0]]
+                 (mapv #(mapv t/item-float (t/tseq %)) (t/tseq (t/argsort m 1)))))))
       (testing "matmul"
         (let [m1 (t/tensor [[1 2] [3 4]])
               m2 (t/tensor [[5 6] [7 8]])

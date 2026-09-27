@@ -6,6 +6,8 @@
   (:refer-clojure :exclude [cond])
   (:require [clorch.torch :as t]))
 
+(set! *warn-on-reflection* true)
+
 (defn norm [x] (t/linalg-norm x))
 (defn vector-norm [x] (t/linalg-vector-norm x))
 (defn matrix-norm [x] (t/linalg-matrix-norm x))

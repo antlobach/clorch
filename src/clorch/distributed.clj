@@ -12,6 +12,8 @@
            [org.bytedeco.javacpp.chrono Milliseconds]
            [org.bytedeco.pytorch Store StringVector TCPStore TCPStoreOptions Tensor]))
 
+(set! *warn-on-reflection* true)
+
 (platform/configure-platform-extension!)
 
 (declare destroy-process-group!)
@@ -85,8 +87,8 @@
     resolved))
 
 (defn- tcp-store
-  [{:keys [rank world-size timeout-ms master-address master-port]}]
-  (let [timeout (Milliseconds. timeout-ms)
+  ^TCPStore [{:keys [rank world-size timeout-ms master-address master-port]}]
+  (let [timeout (Milliseconds. (long timeout-ms))
         workers (SizeTPointer. (long-array [world-size]))
         options (doto (TCPStoreOptions.)
                   (.port (unchecked-short master-port))
@@ -96,7 +98,7 @@
                   (.multiTenant false)
                   (.timeout timeout)
                   (.useLibUV true))]
-    (TCPStore. master-address options)))
+    (TCPStore. ^String master-address options)))
 
 (defn init-process-group!
   "Initializes this JVM's default NCCL process group.
@@ -313,7 +315,7 @@
     (.set store rank-key "ready")
     (dotimes [peer (:world-size context)]
       (.push_back store-keys (str prefix peer)))
-    (._wait store store-keys (Milliseconds. timeout-ms))))
+    (._wait store store-keys (Milliseconds. (long timeout-ms)))))
 
 (defn barrier!
   "Blocks until every rank enters the barrier."

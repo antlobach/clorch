@@ -8,7 +8,10 @@
   (:import [org.apache.commons.math3.distribution BetaDistribution ChiSquaredDistribution
             FDistribution GammaDistribution TDistribution WeibullDistribution ParetoDistribution]
            [org.apache.commons.math3.special Gamma]
+           [org.bytedeco.pytorch Tensor]
            [org.bytedeco.pytorch.global torch]))
+
+(set! *warn-on-reflection* true)
 
 (def ^:private eps 1e-8)
 (def ^:private log-2pi 1.8378770664093453)
@@ -43,7 +46,7 @@
 (defn- maybe-shape [sample-shape]
   (when (seq sample-shape) (vec sample-shape)))
 
-(defn- as-tensor [x]
+(defn- as-tensor ^Tensor [x]
   (if (number? x) (t/tensor x) (t/->tensor x)))
 
 (defn- const-like [value c]

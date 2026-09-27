@@ -3,6 +3,8 @@
   (:require [clojure.string :as str]
             [clorch.torch :as torch]))
 
+(set! *warn-on-reflection* true)
+
 (def ^:private index-symbols
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 

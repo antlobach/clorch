@@ -22,6 +22,8 @@
            [org.bytedeco.pytorch.global torch torch$ScalarType]
            [org.bytedeco.javacpp PointerScope Pointer DoublePointer]))
 
+(set! *warn-on-reflection* true)
+
 (platform/configure-platform-extension!)
 
 ;; --- Memory Management ---
@@ -211,20 +213,27 @@
     (if opts
       (let [{:keys [dtype device requires-grad]} opts
             t-dtype (if dtype
-                      (let [stype (get dtype-map dtype (torch/kFloat))]
+                      (let [^torch$ScalarType stype (get dtype-map dtype (torch/kFloat))]
                         (if (not= (.scalar_type ^Tensor t) stype)
                           (.to ^Tensor t stype false false (MemoryFormatOptional.))
                           t))
                       t)
             t-dev (if device
                     (let [dev (Device. (clojure.core/str (name device)))]
-                      (.to ^Tensor t-dtype dev (.scalar_type t-dtype) false false (MemoryFormatOptional.)))
+                      (.to ^Tensor t-dtype dev (.scalar_type ^Tensor t-dtype) false false (MemoryFormatOptional.)))
                     t-dtype)
             t-grad (if (some? requires-grad) (.set_requires_grad ^Tensor t-dev (clojure.core/boolean requires-grad)) t-dev)]
         t-grad)
       t)))
 
-(defn ->tensor [x]
+(defn ->tensor
+  "Coerces `x` to a Tensor: Tensors (and Modules) pass through, tensor
+   containers unwrap, anything else goes through `tensor`.
+
+   The ^Tensor return hint lets every `(torch/op (->tensor a) ...)` call
+   resolve its JavaCPP overload at compile time instead of by reflection
+   on each call (~30-40x per op on small tensors)."
+  ^Tensor [x]
   (cond
     (instance? org.bytedeco.pytorch.Tensor x) x
     (instance? org.bytedeco.pytorch.Module x) x
@@ -608,7 +617,7 @@
    ```"
   [a b]
   (if (instance? Tensor b)
-    (.eq (->tensor a) b)
+    (.eq (->tensor a) ^Tensor b)
     (.eq (->tensor a) (Scalar. (clojure.core/double b)))))
 
 (defn gt
@@ -626,7 +635,7 @@
    ```"
   [a b]
   (if (instance? Tensor b)
-    (.gt (->tensor a) b)
+    (.gt (->tensor a) ^Tensor b)
     (.gt (->tensor a) (Scalar. (clojure.core/double b)))))
 
 (defn lt
@@ -644,7 +653,7 @@
    ```"
   [a b]
   (if (instance? Tensor b)
-    (.lt (->tensor a) b)
+    (.lt (->tensor a) ^Tensor b)
     (.lt (->tensor a) (Scalar. (clojure.core/double b)))))
 
 (defn ge
@@ -662,7 +671,7 @@
    ```"
   [a b]
   (if (instance? Tensor b)
-    (.ge (->tensor a) b)
+    (.ge (->tensor a) ^Tensor b)
     (.ge (->tensor a) (Scalar. (clojure.core/double b)))))
 
 (defn le
@@ -680,7 +689,7 @@
    ```"
   [a b]
   (if (instance? Tensor b)
-    (.le (->tensor a) b)
+    (.le (->tensor a) ^Tensor b)
     (.le (->tensor a) (Scalar. (clojure.core/double b)))))
 
 (defn ne
@@ -698,7 +707,7 @@
    ```"
   [a b]
   (if (instance? Tensor b)
-    (.ne (->tensor a) b)
+    (.ne (->tensor a) ^Tensor b)
     (.ne (->tensor a) (Scalar. (clojure.core/double b)))))
 
 (defn logical-and
@@ -975,7 +984,7 @@
   [t dtype-or-device]
   (if (instance? org.bytedeco.pytorch.Module t)
     t
-    (let [t-obj (if (instance? org.bytedeco.pytorch.Tensor t) t (->tensor t))]
+    (let [^Tensor t-obj (if (instance? org.bytedeco.pytorch.Tensor t) t (->tensor t))]
       (cond
         (keyword? dtype-or-device)
         (if-let [stype (get dtype-map dtype-or-device)]
@@ -1494,7 +1503,7 @@
 
 (defn ->tensor-vector
   "Converts a Clojure sequence of tensors into a native TensorVector."
-  [tensors]
+  ^org.bytedeco.pytorch.TensorVector [tensors]
   (if (instance? org.bytedeco.pytorch.TensorVector tensors)
     tensors
     (let [tv (org.bytedeco.pytorch.TensorVector.)]
@@ -1699,7 +1708,7 @@
   ([a] (.max (->tensor a)))
   ([a dim & {:keys [keepdim] :or {keepdim false}}]
    (let [res (.max (->tensor a) (clojure.core/long dim) (clojure.core/boolean keepdim))]
-     (.get res (clojure.core/long 0)))))
+     (.get0 res))))
 
 (defn min
   "Returns the minimum value of all elements in the input tensor.
@@ -1721,7 +1730,7 @@
   ([a] (.min (->tensor a)))
   ([a dim & {:keys [keepdim] :or {keepdim false}}]
    (let [res (.min (->tensor a) (clojure.core/long dim) (clojure.core/boolean keepdim))]
-     (.get res (clojure.core/long 0)))))
+     (.get0 res))))
 
 (defn view
   "Returns a new tensor with the same data as the self tensor but of a different shape.
@@ -1909,7 +1918,7 @@
   "Convert negative step slicing to positive step using flip.
    Returns [transformed-tensor new-indexers]."
   [t-obj indexers]
-  (loop [t-obj t-obj
+  (loop [t-obj ^Tensor t-obj
          idx indexers
          dim 0
          new-indexers []]
@@ -2001,7 +2010,7 @@
                         (let [->sio (fn [v] (if (nil? v) (SymIntOptional.) (SymIntOptional. (SymInt. (clojure.core/long v)))))]
                           (TensorIndex. (Slice. (->sio start) (->sio end) (->sio step)))))
                       :else (throw (IllegalArgumentException. (str "Invalid indexer: " spec))))))
-      (.index t-final idx-vec))))
+      (.index ^Tensor t-final idx-vec))))
 
 (defn precompute-rope-freqs [dim seq-len & {:keys [theta] :or {theta 10000.0}}]
   (let [freqs (div (arange 0 dim 2) (clojure.core/double dim))
@@ -2264,7 +2273,9 @@
 
 (defn clip
   ([t min-val max-val]
-   (torch/clip (->tensor t) (clojure.core/double min-val) (clojure.core/double max-val))))
+   (torch/clip (->tensor t)
+               (ScalarOptional. (Scalar. (clojure.core/double min-val)))
+               (ScalarOptional. (Scalar. (clojure.core/double max-val))))))
 
 (defn count-nonzero
   "Counts the number of non-zero values in the tensor `t`.
@@ -2327,7 +2338,7 @@
   ([t]
    (torch/argsort (->tensor t)))
   ([t dim]
-   (torch/argsort (->tensor t) (clojure.core/long dim)))
+   (torch/argsort (->tensor t) (clojure.core/long dim) false))
   ([t dim descending]
    (torch/argsort (->tensor t) (clojure.core/long dim) (clojure.core/boolean descending)))
   ([t dim descending stable]
@@ -2433,12 +2444,12 @@
                          (->tensor chol)
                          (clojure.core/boolean upper))))
 
-(defn- ->long-optional [n]
+(defn- ->long-optional ^LongOptional [n]
   (if (some? n)
     (LongOptional. (clojure.core/long n))
     (LongOptional.)))
 
-(defn- ->string-view-optional [s]
+(defn- ->string-view-optional ^StringViewOptional [s]
   (if (some? s)
     (StringViewOptional. (clojure.core/str s))
     (StringViewOptional.)))
@@ -2809,19 +2820,19 @@
    ```"
   [t] (torch/linalg_det (->tensor t)))
 
-(defn- tuple2->vector [pair]
+(defn- tuple2->vector [^org.bytedeco.pytorch.T_TensorTensor_T pair]
   [(.get0 pair) (.get1 pair)])
 
-(defn- tuple3->vector [triple]
+(defn- tuple3->vector [^org.bytedeco.pytorch.T_TensorTensorTensor_T triple]
   [(.get0 triple) (.get1 triple) (.get2 triple)])
 
-(defn- tuple4->map [quad]
+(defn- tuple4->map [^org.bytedeco.pytorch.T_TensorTensorTensorTensor_T quad]
   {:solution (.get0 quad)
    :residuals (.get1 quad)
    :rank (.get2 quad)
    :singular-values (.get3 quad)})
 
-(defn- ->double-optional [x]
+(defn- ->double-optional ^DoubleOptional [x]
   (if (some? x)
     (DoubleOptional. (clojure.core/double x))
     (DoubleOptional.)))
@@ -2835,7 +2846,7 @@
 
 (defn- ->driver-optional [driver]
   (if (some? driver)
-    (StringViewOptional. (->driver-string driver))
+    (StringViewOptional. ^String (->driver-string driver))
     (StringViewOptional.)))
 
 (defn- order->cond-arg [ord]
@@ -3310,11 +3321,11 @@
                                  (->double-optional rtol)
                                  (clojure.core/boolean hermitian)))
      (if (instance? Tensor tol-or-opts)
-       (torch/linalg_matrix_rank (->tensor a) tol-or-opts)
+       (torch/linalg_matrix_rank (->tensor a) ^Tensor tol-or-opts)
        (torch/linalg_matrix_rank (->tensor a) (clojure.core/double tol-or-opts)))))
   ([a tol {:keys [hermitian] :or {hermitian false}}]
    (if (instance? Tensor tol)
-     (torch/linalg_matrix_rank (->tensor a) tol (clojure.core/boolean hermitian))
+     (torch/linalg_matrix_rank (->tensor a) ^Tensor tol (clojure.core/boolean hermitian))
      (torch/linalg_matrix_rank (->tensor a) (clojure.core/double tol) (clojure.core/boolean hermitian)))))
 
 (defn linalg-cond
@@ -3333,7 +3344,10 @@
   ([a]
    (torch/linalg_cond (->tensor a)))
   ([a ord]
-   (torch/linalg_cond (->tensor a) (order->cond-arg ord))))
+   (let [arg (order->cond-arg ord)]
+     (if (instance? ScalarOptional arg)
+       (torch/linalg_cond (->tensor a) ^ScalarOptional arg)
+       (torch/linalg_cond (->tensor a) ^String arg)))))
 
 (defn linalg-lstsq
   "Computes a solution to the least squares problem of a system of linear equations.
@@ -3606,12 +3620,12 @@
 
 (defn clip-grad-norm-raw
   "Thin wrapper around native clip_grad_norm_ for TensorVector."
-  [params max-norm]
+  [^org.bytedeco.pytorch.TensorVector params max-norm]
   (torch/clip_grad_norm_ params (clojure.core/double max-norm) 2.0 false))
 
 ;; --- Utilities ---
 
-(defn- walk-and-serialize [archive prefix thing]
+(defn- walk-and-serialize [^org.bytedeco.pytorch.OutputArchive archive prefix thing]
   (cond
     (instance? Tensor thing)
     (.write archive (clojure.core/str prefix) ^Tensor thing)
@@ -3639,7 +3653,7 @@
     (doseq [[i v] (map-indexed vector thing)]
       (walk-and-serialize archive (if (empty? prefix) (str i) (clojure.core/str prefix "." i)) v))))
 
-(defn- walk-and-deserialize [archive prefix thing]
+(defn- walk-and-deserialize [^org.bytedeco.pytorch.InputArchive archive prefix thing]
   (cond
     (instance? Tensor thing)
     (do (.read archive (clojure.core/str prefix) ^Tensor thing) thing)
@@ -3882,7 +3896,7 @@
   nil)
 
 (defmethod print-method org.bytedeco.pytorch.Tensor [t ^java.io.Writer w]
-  (.write w (tensor-string t)))
+  (.write w ^String (tensor-string t)))
 
 (defn top-p
   "Nucleus (Top-p) sampling.

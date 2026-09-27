@@ -10,6 +10,8 @@
            [org.bytedeco.javacpp BytePointer IntPointer Pointer]
            [org.bytedeco.pytorch ByteVector Store TensorBase TensorVector]))
 
+(set! *warn-on-reflection* true)
+
 (defrecord NcclWork [^CUevent_st event ^ncclComm communicator result released?])
 
 (defn- nccl-message [status]
@@ -69,7 +71,7 @@
     (throw (ex-info "Unsupported NCCL reduction operation"
                     {:operation operation}))))
 
-(defn- unique-id-bytes [^ncclUniqueId unique-id]
+(defn- unique-id-bytes ^bytes [^ncclUniqueId unique-id]
   (byte-array
    (map #(.internal unique-id (int %))
         (range nccl/NCCL_UNIQUE_ID_BYTES))))
@@ -166,7 +168,7 @@
             (let [async-status (IntPointer. 1)]
               (check-nccl! "ncclCommGetAsyncError"
                            (nccl/ncclCommGetAsyncError
-                            (:communicator work) async-status))
+                            ^ncclComm (:communicator work) async-status))
               (check-nccl! "NCCL asynchronous operation" (.get async-status 0))
               (cudart/cudaEventDestroy (:event work))
               (reset! (:released? work) true))

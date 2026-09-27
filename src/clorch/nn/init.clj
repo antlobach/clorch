@@ -3,6 +3,8 @@
   (:import [org.bytedeco.pytorch.global torch]
            [org.bytedeco.pytorch NoGradGuard Scalar kFanIn kFanOut kReLU kLeakyReLU kTanh kSigmoid kLinear FanModeType Nonlinearity]))
 
+(set! *warn-on-reflection* true)
+
 (defmacro ^:private no-grad [& body]
   `(with-open [_# (NoGradGuard.)]
      ~@body))

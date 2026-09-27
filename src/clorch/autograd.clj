@@ -2,6 +2,8 @@
   (:require [clorch.torch :as torch])
   (:import [org.bytedeco.pytorch NoGradGuard]))
 
+(set! *warn-on-reflection* true)
+
 (defn set-requires-grad [t bool]
   (.set_requires_grad (torch/->tensor t) (boolean bool))
   t)

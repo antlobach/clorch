@@ -10,6 +10,8 @@
            [java.util UUID]
            [java.util.concurrent LinkedBlockingQueue TimeUnit TimeoutException]))
 
+(set! *warn-on-reflection* true)
+
 (declare stop!)
 
 (defrecord WorkerProcess [rank ^Process process ^File stdout ^File stderr])
@@ -82,7 +84,7 @@
     (Files/createDirectories path (make-array java.nio.file.attribute.FileAttribute 0))
     (.toFile path)))
 
-(defn- write-worker-config! [config log-directory]
+(defn- write-worker-config! ^File [config log-directory]
   (let [path (.toPath (io/file log-directory "worker-config.edn"))
         content (ensure-edn! (select-keys config [:main :args]))]
     (Files/writeString path content StandardCharsets/UTF_8
