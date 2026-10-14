@@ -1,7 +1,10 @@
 (ns clorch.optim
-  (:import [org.bytedeco.pytorch SGD SGDOptions Adam AdamOptions AdamW AdamWOptions RMSprop RMSpropOptions Adagrad AdagradOptions TensorVector]))
+  (:import [org.bytedeco.pytorch SGD SGDOptions Adam AdamOptions AdamW AdamWOptions RMSprop RMSpropOptions Adagrad AdagradOptions Optimizer TensorVector]
+           [org.bytedeco.javacpp DoublePointer]))
 
-(defn- ->tensor-vector [params]
+(set! *warn-on-reflection* true)
+
+(defn- ->tensor-vector ^TensorVector [params]
   (if (instance? TensorVector params)
     params
     (let [v (TensorVector.)]
@@ -9,7 +12,7 @@
         (.push_back v p))
       v)))
 
-(defn- put-betas! [betas-pointer [beta1 beta2]]
+(defn- put-betas! [^DoublePointer betas-pointer [beta1 beta2]]
   (let [first-default (.get betas-pointer 0)
         values (cond
                  (= first-default 0.9) [beta1 beta2]
@@ -99,8 +102,8 @@
     (.put (.eps opts) (double eps))
     (Adagrad. (->tensor-vector params) opts)))
 
-(defn zero-grad [opt]
+(defn zero-grad [^Optimizer opt]
   (.zero_grad opt))
 
-(defn step [opt]
+(defn step [^Optimizer opt]
   (.step opt))

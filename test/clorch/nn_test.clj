@@ -65,3 +65,23 @@
         (nn/load-state-dict model {:weight new-weights :bias (torch/zeros [3])})
         (is (= 0.0 (torch/item-float (torch/sum (torch/->tensor w)))))
         (is (= 0.0 (torch/item-float (torch/sum (torch/->tensor b)))))))))
+
+(deftest load-state-dict-native-module-test
+  (testing "load-state-dict copies a state-dict into a native module by name"
+    (torch/with-torch
+      (let [src (nn/linear 4 3)
+            dst (nn/linear 4 3)
+            x (torch/randn [2 4])]
+        (is (identical? dst (nn/load-state-dict dst (nn/state-dict src))))
+        (is (torch/allclose (nn/forward src x) (nn/forward dst x)))))))
+
+(deftest native-module-forward-test
+  (testing "forward dispatches to each native module's own forward"
+    (torch/with-torch
+      (is (= [2 3] (torch/size (nn/forward (nn/linear 4 3) (torch/randn [2 4])))))
+      (is (= [2 5] (torch/size (nn/forward (nn/bilinear 3 4 5) [(torch/randn [2 3]) (torch/randn [2 4])]))))
+      (is (= [2 7 8] (torch/size (nn/forward (nn/embedding 10 8) (torch/tensor [[1 2 3 4 5 6 7] [0 0 0 0 0 0 0]] {:dtype :int64})))))))
+  (testing "native errors propagate unwrapped"
+    (torch/with-torch
+      (is (thrown? RuntimeException
+                   (nn/forward (nn/linear 4 3) (torch/randn [2 5])))))))

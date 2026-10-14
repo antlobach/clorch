@@ -3,6 +3,8 @@
             [clojure.java.io :as io]
             [clorch.data :as data]))
 
+(set! *warn-on-reflection* true)
+
 (defn- load-dataset [spec-file]
   (let [{:keys [factory args worker-init-fn]} (edn/read-string (slurp spec-file))
         ctor (requiring-resolve factory)

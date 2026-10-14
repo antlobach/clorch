@@ -5,7 +5,10 @@
             [clorch.nn.functional :as F]
             [clorch.autograd :as autograd])
   (:import [org.bytedeco.pytorch LinearImpl LinearOptions ReLUImpl SigmoidImpl SoftmaxImpl DropoutImpl DropoutOptions FlattenImpl Conv1dImpl Conv1dOptions Conv2dImpl Conv2dOptions Conv3dImpl Conv3dOptions ConvTranspose1dImpl ConvTranspose1dOptions ConvTranspose2dImpl ConvTranspose2dOptions ConvTranspose3dImpl ConvTranspose3dOptions BatchNorm1dImpl BatchNorm2dImpl BatchNorm3dImpl BatchNormOptions GroupNormImpl GroupNormOptions InstanceNorm1dImpl InstanceNorm2dImpl InstanceNorm3dImpl InstanceNormOptions RNNImpl RNNOptions LSTMImpl LSTMOptions GRUImpl GRUOptions EmbeddingImpl EmbeddingOptions Module Tensor TensorVector TanhImpl ELUImpl SELUImpl CELUImpl CELUOptions ELUOptions LeakyReLUImpl LeakyReLUOptions ReLU6Impl SoftplusImpl SoftplusOptions SoftsignImpl SoftminImpl MishImpl HardtanhImpl HardtanhOptions LogSigmoidImpl LogSoftmaxImpl HardshrinkImpl HardshrinkOptions SoftshrinkImpl SoftshrinkOptions TanhshrinkImpl ThresholdImpl ThresholdOptions GLUImpl GLUOptions RReLUImpl RReLUOptions AlphaDropoutImpl FeatureAlphaDropoutImpl BilinearImpl BilinearOptions]
-           [org.bytedeco.javacpp LongPointer]))
+           [org.bytedeco.pytorch.global torch$ScalarType]
+           [org.bytedeco.javacpp LongPointer Pointer]))
+
+(set! *warn-on-reflection* true)
 
 ;; --- Core Protocols ---
 
@@ -62,9 +65,10 @@
     (satisfies? IModule thing) (-to thing dtype-or-device)
     (instance? Tensor thing) (torch/to thing dtype-or-device)
     (instance? TensorVector thing)
-    (let [out (TensorVector.)]
+    (let [^TensorVector thing thing
+          out (TensorVector.)]
       (dotimes [i (.size thing)]
-        (.push_back out (torch/to (.get thing (clojure.core/long i)) dtype-or-device)))
+        (.push_back out ^Tensor (torch/to (.get thing (clojure.core/long i)) dtype-or-device)))
       out)
     (instance? Parameter thing) (assoc thing :tensor (torch/to (:tensor thing) dtype-or-device))
     (map? thing) (into (empty thing) (for [[k v] thing] [k (to v dtype-or-device)]))
@@ -96,8 +100,8 @@
                   (swap! params-collector conj node))
 
                 (instance? TensorVector node)
-                (dotimes [i (.size node)]
-                  (let [p (.get node (clojure.core/long i))]
+                (dotimes [i (.size ^TensorVector node)]
+                  (let [p (.get ^TensorVector node (clojure.core/long i))]
                     (when (or (not trainable-only) (.requires_grad ^Tensor p))
                       (swap! params-collector conj p))))
 
@@ -154,7 +158,12 @@
                   (when (string? k) (get m (keyword k))))
               nil))]
     (cond
-      (instance? Module model) (do (.load_state_dict ^Module model dict) model)
+      (instance? Module model)
+      (let [pairs (.pairs (.named_parameters ^Module model))]
+        (dotimes [i (.size pairs)]
+          (when-some [v (lookup dict (.getString (.first pairs (clojure.core/long i))))]
+            (torch/copy- (.second pairs (clojure.core/long i)) v)))
+        model)
       (instance? Parameter model) (do (torch/copy- (:tensor model) dict) model)
       (instance? Tensor model) (do (torch/copy- model dict) model)
       (map? model) (do (doseq [[k v] model] (load-state-dict v (lookup dict k))) model)
@@ -182,15 +191,51 @@
 
 ;; --- Protocol Implementations ---
 
+(def ^:private ^java.util.concurrent.ConcurrentHashMap forward-methods
+  (java.util.concurrent.ConcurrentHashMap.))
+
+(defn- find-forward
+  "The single public `forward` of class `c` that accepts `arg-classes`, or nil
+   (none, or more than one)."
+  ^java.lang.reflect.Method [^Class c arg-classes]
+  (let [n (count arg-classes)
+        ms (filterv (fn [^java.lang.reflect.Method m]
+                      (and (= "forward" (.getName m))
+                           (= n (.getParameterCount m))
+                           (every? true? (map (fn [^Class p ^Class a] (.isAssignableFrom p a))
+                                              (.getParameterTypes m) arg-classes))))
+                    (.getMethods c))]
+    (when (= 1 (count ms)) (first ms))))
+
+(defn- invoke-forward
+  "Calls a native module's `forward`. JavaCPP's Module declares no `forward`;
+   each *Impl class declares its own, so it can't be resolved at compile time.
+   The method is looked up once per (module class, argument classes) and
+   cached; anything ambiguous falls back to Clojure's reflector."
+  [module & args]
+  (let [arg-array (object-array args)
+        k (into [(class module)] (map class) args)
+        ^java.lang.reflect.Method m
+        (or (.get forward-methods k)
+            (when-not (some nil? args)
+              (when-let [m (find-forward (class module) (rest k))]
+                (.put forward-methods k m)
+                m)))]
+    (if m
+      (try (.invoke m module arg-array)
+           (catch java.lang.reflect.InvocationTargetException e
+             (throw (.getCause e))))
+      (clojure.lang.Reflector/invokeInstanceMethod module "forward" arg-array))))
+
 (extend-type org.bytedeco.pytorch.Module
   IModule
-  (-forward [this x] (.forward this x))
-  (-train [this bool] (.train this bool))
+  (-forward [this x] (invoke-forward this x))
+  (-train [this bool] (.train this (clojure.core/boolean bool)))
   (-to [this dtype-or-device]
     (cond
       (keyword? dtype-or-device)
       (if-let [stype (get torch/dtype-map dtype-or-device)]
-        (.to this stype false)
+        (.to this ^torch$ScalarType stype false)
         (.to this (org.bytedeco.pytorch.Device. (name dtype-or-device)) false))
 
       (instance? org.bytedeco.pytorch.Device dtype-or-device)
@@ -226,7 +271,7 @@
 (defn zero-grad
   "Clears the gradients of all parameters in the model or collection."
   [thing]
-  (let [params (parameters thing)]
+  (let [^TensorVector params (parameters thing)]
     (dotimes [i (.size params)]
       (let [p (.get params (clojure.core/long i))
             g (.grad p)]
@@ -262,7 +307,7 @@
 (defn- get-params-count
   ([m] (get-params-count m false))
   ([m trainable-only]
-   (let [p-vec (parameters m :trainable-only trainable-only)
+   (let [^TensorVector p-vec (parameters m :trainable-only trainable-only)
          sz (.size p-vec)]
      (reduce + (for [i (range sz)] (.numel (.get p-vec (clojure.core/long i))))))))
 
@@ -288,7 +333,7 @@
              params-str (str/join ", " (for [[k s] params] (str k "=" s)))]
          (str module-label "(" params-str ")"))
        (map? m)
-       (str (if (record? m) (.getSimpleName (type m)) "Module") " {\n"
+       (str (if (record? m) (.getSimpleName ^Class (type m)) "Module") " {\n"
             (str/join "\n" (for [[k v] m] (str indent-str "  " k ": " (module-string v (inc indent)))))
             "\n" indent-str "}")
        (vector? m)
@@ -299,7 +344,7 @@
        :else (str m)))))
 
 (defmethod print-method org.bytedeco.pytorch.Module [m ^java.io.Writer w]
-  (.write w (module-string m)))
+  (.write w ^String (module-string m)))
 
 (defn summary
   "Prints a summary of the model architecture, inspired by torchsummary.
@@ -341,9 +386,9 @@
                  (instance? Module node)
                  (let [named-p (.named_parameters ^Module node)]
                    (dotimes [i (.size named-p)]
-                     (let [pair (.get (.pairs named-p) (clojure.core/long i))
-                           param-name (.getString (.first pair))
-                           tensor (.second pair)
+                     (let [pairs (.pairs named-p)
+                           param-name (.getString (.first pairs (clojure.core/long i)))
+                           tensor (.second pairs (clojure.core/long i))
                            full-name (if (empty? path) param-name (str path "." param-name))]
                        (swap! res assoc full-name tensor))))
 
@@ -415,7 +460,7 @@
             :else (throw (IllegalArgumentException. "Params must be a number or a sequence")))]
     (LongPointer. (long-array v))))
 
-(defn- set-lp! [lp values dims]
+(defn- set-lp! [^Pointer lp values dims]
   (.put lp (->lp values dims))
   lp)
 
@@ -443,7 +488,7 @@
     (when sparse (.put (.sparse opts) (clojure.core/boolean sparse)))
     (let [emb (EmbeddingImpl. opts)]
       (when _weight (torch/copy- (.weight emb) _weight))
-      (let [p-vec (parameters emb)]
+      (let [^TensorVector p-vec (parameters emb)]
         (dotimes [i (.size p-vec)]
           (autograd/set-requires-grad (.get p-vec (clojure.core/long i)) (not _freeze))))
       (when _freeze (.eval emb))
@@ -531,28 +576,36 @@
 (defn instancenorm2d [features] (InstanceNorm2dImpl. (InstanceNormOptions. (clojure.core/long features))))
 (defn instancenorm3d [features] (InstanceNorm3dImpl. (InstanceNormOptions. (clojure.core/long features))))
 
-(defn- setup-rnn-opts [opts hidden-size num-layers bias batch-first dropout bidirectional]
-  (.put (.hidden_size opts) (clojure.core/long hidden-size))
-  (when num-layers (.put (.num_layers opts) (clojure.core/long num-layers)))
-  (when (some? bias) (.put (.bias opts) (clojure.core/boolean bias)))
-  (when (some? batch-first) (.put (.batch_first opts) (clojure.core/boolean batch-first)))
-  (when dropout (.put (.dropout opts) (clojure.core/double dropout)))
-  (when (some? bidirectional) (.put (.bidirectional opts) (clojure.core/boolean bidirectional)))
-  opts)
+(defmacro ^:private setup-rnn-opts
+  "Sets the options RNN, LSTM and GRU share. A macro so each call site's
+   options class (RNNOptions, LSTMOptions, GRUOptions: no common type)
+   is known at compile time."
+  [opts-class opts hidden-size num-layers bias batch-first dropout bidirectional]
+  (let [o (with-meta (gensym "opts") {:tag opts-class})]
+    `(let [~o ~opts
+           hidden-size# ~hidden-size num-layers# ~num-layers bias# ~bias
+           batch-first# ~batch-first dropout# ~dropout bidirectional# ~bidirectional]
+       (.put (.hidden_size ~o) (clojure.core/long hidden-size#))
+       (when num-layers# (.put (.num_layers ~o) (clojure.core/long num-layers#)))
+       (when (some? bias#) (.put (.bias ~o) (clojure.core/boolean bias#)))
+       (when (some? batch-first#) (.put (.batch_first ~o) (clojure.core/boolean batch-first#)))
+       (when dropout# (.put (.dropout ~o) (clojure.core/double dropout#)))
+       (when (some? bidirectional#) (.put (.bidirectional ~o) (clojure.core/boolean bidirectional#)))
+       ~o)))
 
 (defn rnn [input-size hidden-size & {:keys [num-layers bias batch-first dropout bidirectional]}]
   (let [opts (RNNOptions. (clojure.core/long input-size) (clojure.core/long hidden-size))]
-    (setup-rnn-opts opts hidden-size num-layers bias batch-first dropout bidirectional)
+    (setup-rnn-opts RNNOptions opts hidden-size num-layers bias batch-first dropout bidirectional)
     (RNNImpl. opts)))
 
 (defn lstm [input-size hidden-size & {:keys [num-layers bias batch-first dropout bidirectional]}]
   (let [opts (LSTMOptions. (clojure.core/long input-size) (clojure.core/long hidden-size))]
-    (setup-rnn-opts opts hidden-size num-layers bias batch-first dropout bidirectional)
+    (setup-rnn-opts LSTMOptions opts hidden-size num-layers bias batch-first dropout bidirectional)
     (LSTMImpl. opts)))
 
 (defn gru [input-size hidden-size & {:keys [num-layers bias batch-first dropout bidirectional]}]
   (let [opts (GRUOptions. (clojure.core/long input-size) (clojure.core/long hidden-size))]
-    (setup-rnn-opts opts hidden-size num-layers bias batch-first dropout bidirectional)
+    (setup-rnn-opts GRUOptions opts hidden-size num-layers bias batch-first dropout bidirectional)
     (GRUImpl. opts)))
 
 (defn max-pool1d [kernel & {:keys [stride padding dilation ceil-mode] :or {padding 0 dilation 1 ceil-mode false}}]
@@ -605,7 +658,7 @@
 
 (defrecord PairwiseModuleRecord [impl]
   IModule
-  (-forward [_ x] (.forward impl (torch/->tensor (first x)) (torch/->tensor (second x))))
+  (-forward [_ x] (invoke-forward impl (torch/->tensor (first x)) (torch/->tensor (second x))))
   (-train [this _] this)
   (-to [this _] this))
 

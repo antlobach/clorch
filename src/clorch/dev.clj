@@ -5,6 +5,8 @@
   (:import [java.net BindException SocketException]
            [java.lang System]))
 
+(set! *warn-on-reflection* true)
+
 (defn- configure-javacpp-platform-extension! []
   (let [extension (platform/configure-platform-extension!)]
     (println "clorch.dev: org.bytedeco.javacpp.platform.extension=" (pr-str extension))))

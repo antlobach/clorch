@@ -4,6 +4,8 @@
            [org.bytedeco.pytorch.global torch]
            [org.bytedeco.javacpp Loader]))
 
+(set! *warn-on-reflection* true)
+
 ;; Force loading with GPU extension if possible
 (let [old-ext (System/getProperty "org.bytedeco.javacpp.platform.extension")]
   (try

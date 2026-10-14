@@ -4,13 +4,15 @@
   (:import [org.bytedeco.pytorch Optimizer Scalar Tensor TensorVector]
            [org.bytedeco.pytorch.global torch torch$DeviceType torch$ScalarType]))
 
-(defn- device-type [device]
+(set! *warn-on-reflection* true)
+
+(defn- device-type ^torch$DeviceType [device]
   (case device
     :cuda torch$DeviceType/CUDA
     :cpu torch$DeviceType/CPU
     (throw (ex-info "Autocast device must be :cuda or :cpu" {:device device}))))
 
-(defn- scalar-type [dtype]
+(defn- scalar-type ^torch$ScalarType [dtype]
   (case dtype
     :float16 torch$ScalarType/Half
     :bfloat16 torch$ScalarType/BFloat16

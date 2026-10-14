@@ -4,6 +4,8 @@
             [clorch.cuda :as cuda]
             [clorch.distributed :as dist]))
 
+(set! *warn-on-reflection* true)
+
 (defn- ensure-java-25! []
   (let [feature (.feature (Runtime/version))]
     (when (< feature 25)

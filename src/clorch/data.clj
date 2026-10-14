@@ -6,6 +6,8 @@
            [java.util.concurrent Callable Future LinkedBlockingQueue ThreadFactory ThreadPoolExecutor TimeUnit TimeoutException]
            [java.util.concurrent.atomic AtomicInteger]))
 
+(set! *warn-on-reflection* true)
+
 (def ^:private torch-api
   (delay
     {:stack (requiring-resolve 'clorch.torch/stack)
@@ -38,8 +40,8 @@
     (let [cls (Class/forName "org.bytedeco.pytorch.JavaDataset")]
       (extend cls
         IDataset
-        {:get-size (fn [this] (.get (.size this)))
-         :get-item (fn [this idx]
+        {:get-size (fn [^org.bytedeco.pytorch.JavaDataset this] (.get (.size this)))
+         :get-item (fn [^org.bytedeco.pytorch.JavaDataset this idx]
                      (let [example (.get this (clojure.core/long idx))]
                        {:data (.data example) :target (.target example)}))}))))
 
@@ -90,7 +92,7 @@
       (instance? @tensor-class first-item)
       (let [v (org.bytedeco.pytorch.TensorVector.)]
         (doseq [item items] (.push_back v item))
-        (let [stacked ((torch-fn :stack) v 0)] (.retainReference stacked) stacked))
+        (let [stacked ((torch-fn :stack) v 0)] (.retainReference ^org.bytedeco.javacpp.Pointer stacked) stacked))
       :else (vec items))))
 
 (defn- build-batch [ds idxs collate-fn]
@@ -101,7 +103,7 @@
     (partition batch-size idxs)
     (partition-all batch-size idxs)))
 
-(defn- submit-batch [executor ds idxs collate-fn]
+(defn- submit-batch [^java.util.concurrent.ExecutorService executor ds idxs collate-fn]
   (.submit executor
            ^Callable
            (reify Callable
@@ -125,7 +127,7 @@
 
 (defn- parallel-batches
   [ds chunks collate-fn num-workers prefetch-factor]
-  (let [executor (make-thread-worker-executor num-workers)
+  (let [^ThreadPoolExecutor executor (make-thread-worker-executor num-workers)
         max-inflight (clojure.core/max 1 (* (clojure.core/int num-workers) (clojure.core/int prefetch-factor)))]
     (letfn [(fill-queue [remaining q]
               (loop [remaining remaining
@@ -150,7 +152,7 @@
     (.getAbsolutePath f)))
 
 (defn- process-start-worker [spec-file worker-id]
-  (let [proc-builder (ProcessBuilder. ["clojure" "-M" "-m" "clorch.data-worker" "--server" spec-file])
+  (let [proc-builder (ProcessBuilder. ^java.util.List (vector "clojure" "-M" "-m" "clorch.data-worker" "--server" spec-file))
         _ (.redirectError proc-builder java.lang.ProcessBuilder$Redirect/INHERIT)
         proc (.start proc-builder)
         rdr (BufferedReader. (InputStreamReader. (.getInputStream proc)))
@@ -280,7 +282,7 @@
         select (torch-fn :select)
         X-t (->tensor X)
         y-t (->tensor y)
-        n (.size X-t (clojure.core/long 0))]
+        n (.size ^org.bytedeco.pytorch.Tensor X-t (clojure.core/long 0))]
     (dataset :size (fn [] n)
              :get-item (fn [idx] {:data (select X-t 0 idx)
                                   :target (select y-t 0 idx)}))))

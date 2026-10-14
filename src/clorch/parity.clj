@@ -7,6 +7,8 @@
             [clojure.string :as str])
   (:import [org.bytedeco.pytorch.global torch]))
 
+(set! *warn-on-reflection* true)
+
 (def ^:private noisy-prefixes
   #{"Get" "Set" "Log" "Init" "Is" "Has" "DeviceType" "LinalgBackend" "report" "show_" "dispatch_"})
 
