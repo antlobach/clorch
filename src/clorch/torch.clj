@@ -29,6 +29,7 @@
 ;; --- Memory Management ---
 
 (def ^:private ^ThreadLocal session-scope (ThreadLocal.))
+(def ^:private float-array-class (class (float-array 0)))
 
 (defn release!
   "Manually deletes the native C++ memory associated with a tensor or collection of tensors.
@@ -193,6 +194,8 @@
             (instance? Tensor data) data
             (and (record? data) (:tensor data)) (:tensor data)
             (number? data) (torch/tensor (clojure.core/float data))
+            (instance? float-array-class data)
+            (torch/tensor ^floats data (org.bytedeco.pytorch.TensorOptions.))
             (or (vector? data) (seq? data))
             (let [shape (loop [curr data s []] (if (coll? curr) (recur (first curr) (conj s (count curr))) s))
                   flat-data (clojure.core/flatten data)]
@@ -1613,7 +1616,7 @@
   (let [dst-t (->tensor dst)
         src-t (->tensor src)]
     (with-open [_ (NoGradGuard.)]
-      (.set_ dst-t src-t))
+      (.copy_ dst-t src-t))
     dst-t))
 
 (defn multinomial

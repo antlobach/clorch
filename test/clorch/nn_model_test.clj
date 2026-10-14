@@ -2,7 +2,6 @@
   (:require [clorch.torch :as t]
             [clorch.nn :as nn]
             [clorch.nn.functional :as F]
-            [clorch.autograd :as autograd]
             [clojure.test :refer [deftest is testing]]))
 
 (deftest model-lifecycle-test
@@ -27,6 +26,7 @@
 
 (deftest custom-model-test
   (t/with-torch
+    #_{:clj-kondo/ignore [:unresolved-symbol]}
     (nn/defmodel MyModel [in out]
       [l1 (nn/linear in 16)
        l2 (nn/linear 16 out)]
@@ -40,3 +40,14 @@
           out (nn/forward m x)]
       (is (= [2 5] (t/size out)))
       (is (= 4 (.size (nn/parameters m)))))))
+
+(deftest flat-state-dict-loading-test
+  (t/with-torch
+    (let [model (nn/sequential (nn/linear 3 2))
+          names (nn/flat-parameter-names model)
+          state {"[0].weight" (t/full [2 3] 2.0)
+                 "[0].bias" (t/full [2] -1.0)}
+          loaded (nn/load-flat-state-dict! model state)
+          output (nn/forward model (t/ones [1 3]))]
+      (is (= #{"[0].weight" "[0].bias"} names loaded))
+      (is (= 10.0 (double (t/item-float (t/sum output))))))))

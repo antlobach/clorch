@@ -108,6 +108,12 @@
         (is (= [2] (torch/size t)))
         (is (near? 3.75 (torch/item-float (torch/sum t))))))))
 
+(deftest primitive-float-array-construction-test
+  (torch/with-torch
+    (let [tensor (torch/tensor (float-array [1.25 -2.5 3.75]))]
+      (is (= [3] (torch/size tensor)))
+      (is (near? 2.5 (torch/item-float (torch/sum tensor)))))))
+
 (deftest math-ops-test
   (testing "Basic arithmetic value check"
     (torch/with-torch
