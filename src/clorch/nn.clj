@@ -408,6 +408,79 @@
        (walk thing prefix)
        @res))))
 
+(defn load-flat-state-dict!
+  "Copies a flat, dotted-path state dictionary into a model.
+
+  Native parameter views are consumed while their owning parameter list is alive,
+  avoiding borrowed JavaCPP pointers escaping the traversal."
+  [thing values]
+  (let [loaded (atom #{})]
+    (letfn [(copy-value! [path destination]
+              (when-some [source (get values path)]
+                (torch/copy- destination source)
+                (swap! loaded conj path)))
+            (walk [node path]
+              (cond
+                (instance? Module node)
+                (let [named-p (.named_parameters ^Module node)
+                      pairs (.pairs named-p)]
+                  (dotimes [i (.size named-p)]
+                    (let [parameter-name (.getString (.first pairs (clojure.core/long i)))
+                          full-name (if (empty? path)
+                                      parameter-name
+                                      (str path "." parameter-name))]
+                      (copy-value! full-name (.second pairs (clojure.core/long i))))))
+
+                (instance? Parameter node)
+                (copy-value! path (:tensor node))
+
+                (instance? Tensor node)
+                (copy-value! path node)
+
+                (map? node)
+                (doseq [[k v] node]
+                  (walk v (if (empty? path)
+                            (clojure.core/name k)
+                            (str path "." (clojure.core/name k)))))
+
+                (vector? node)
+                (doseq [[i v] (map-indexed vector node)]
+                  (walk v (str path "[" i "]")))))]
+      (walk thing "")
+      @loaded)))
+
+(defn flat-parameter-names
+  "Returns the flat paths accepted by load-flat-state-dict! without retaining
+  borrowed native parameter views."
+  [thing]
+  (let [names (atom #{})]
+    (letfn [(walk [node path]
+              (cond
+                (instance? Module node)
+                (let [named-p (.named_parameters ^Module node)
+                      pairs (.pairs named-p)]
+                  (dotimes [i (.size named-p)]
+                    (let [parameter-name (.getString (.first pairs (clojure.core/long i)))]
+                      (swap! names conj
+                             (if (empty? path)
+                               parameter-name
+                               (str path "." parameter-name))))))
+
+                (or (instance? Parameter node) (instance? Tensor node))
+                (swap! names conj path)
+
+                (map? node)
+                (doseq [[k v] node]
+                  (walk v (if (empty? path)
+                            (clojure.core/name k)
+                            (str path "." (clojure.core/name k)))))
+
+                (vector? node)
+                (doseq [[i v] (map-indexed vector node)]
+                  (walk v (str path "[" i "]")))))]
+      (walk thing "")
+      @names)))
+
 ;; --- Layer Implementations ---
 
 (defrecord LayerNormRecord [gamma beta eps]

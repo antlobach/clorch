@@ -33,12 +33,12 @@
    (torch/xavier_normal_ (t/->tensor tensor) (double (or gain 1.0)))))
 
 (defn kaiming-uniform! [tensor & {:keys [a mode non-linearity]
-                                 :or {a 0 mode :fan-in non-linearity :leaky-relu}}]
+                                  :or {a 0 mode :fan-in non-linearity :leaky-relu}}]
   (no-grad
    (torch/kaiming_uniform_ (t/->tensor tensor) (double a) (->fan-mode mode) (->non-linearity non-linearity))))
 
 (defn kaiming-normal! [tensor & {:keys [a mode non-linearity]
-                                :or {a 0 mode :fan-in non-linearity :leaky-relu}}]
+                                 :or {a 0 mode :fan-in non-linearity :leaky-relu}}]
   (no-grad
    (torch/kaiming_normal_ (t/->tensor tensor) (double a) (->fan-mode mode) (->non-linearity non-linearity))))
 
@@ -57,6 +57,36 @@
 (defn zeros! [tensor]
   (no-grad
    (torch/zeros_ (t/->tensor tensor))))
+
+(defn- normal-cdf [value]
+  (t/with-torch
+    (* 0.5
+       (+ 1.0
+          (double
+           (t/item-float
+            (t/erf (t/tensor (/ (double value) (Math/sqrt 2.0))))))))))
+
+(defn trunc-normal!
+  "Fills a tensor from N(mean, std²), redrawn outside [a, b].
+
+  Uses the inverse-CDF algorithm from torch.nn.init.trunc_normal_."
+  [tensor & {:keys [mean std a b]
+             :or {mean 0.0 std 1.0 a -2.0 b 2.0}}]
+  (when-not (and (pos? std) (< a b))
+    (throw (IllegalArgumentException.
+            "trunc-normal! requires a positive std and a < b")))
+  (let [lower (normal-cdf (/ (- a mean) std))
+        upper (normal-cdf (/ (- b mean) std))
+        native (t/->tensor tensor)]
+    (no-grad
+     (torch/uniform_ native (- (* 2.0 lower) 1.0) (- (* 2.0 upper) 1.0))
+     (t/copy- native
+              (-> native
+                  t/erfinv
+                  (t/mul (* std (Math/sqrt 2.0)))
+                  (t/add mean)
+                  (t/clamp a b)))))
+  tensor)
 
 (defn ones! [tensor]
   (no-grad
