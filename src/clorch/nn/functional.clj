@@ -121,6 +121,44 @@
     (.put (.inplace options) false)
     (torch/dropout2d (t/->tensor tensor) options)))
 
+(defn combine-attention-masks
+  "Combines an SDPA attention mask with a key-padding mask.
+
+  `attention-mask` follows `scaled-dot-product-attention`: true boolean values
+  participate in attention, while floating values are additive logits biases.
+  `key-padding-mask` follows PyTorch module convention: true values are ignored.
+  Its shape must be `[batch, key-length]`."
+  [attention-mask key-padding-mask]
+  (if-not key-padding-mask
+    attention-mask
+    (let [[batch-size key-length :as shape] (t/size key-padding-mask)]
+      (when-not (= 2 (count shape))
+        (throw (IllegalArgumentException.
+                "key-padding-mask must have shape [batch, key-length]")))
+      (let [padding-mask (t/reshape (t/->tensor key-padding-mask)
+                                    [batch-size 1 1 key-length])
+            allowed (t/logical-not padding-mask)]
+        (if-not attention-mask
+          allowed
+          (let [attention-mask (t/->tensor attention-mask)
+                scalar-type (.toString (.scalar_type attention-mask))]
+            (cond
+              (= "Bool" scalar-type)
+              (t/logical-and attention-mask allowed)
+
+              (.is_floating_point attention-mask)
+              (let [padding-bias (t/to
+                                  (t/masked-fill
+                                   (t/zeros [batch-size 1 1 key-length])
+                                   padding-mask
+                                   Double/NEGATIVE_INFINITY)
+                                  (t/dtype attention-mask))]
+                (t/add attention-mask padding-bias))
+
+              :else
+              (throw (IllegalArgumentException.
+                      "attention-mask must be boolean or floating point")))))))))
+
 (defn scaled-dot-product-attention
   "Runs LibTorch's fused scaled-dot-product attention dispatcher.
 
@@ -271,8 +309,8 @@
 
 (defn pad [input padding & {:keys [mode value] :or {mode :constant value 0.0}}]
   (let [^longs p-arr (if (number? padding)
-                (->pad-array padding (- (count (t/size input)) 2))
-                (long-array (mapv clojure.core/long padding)))]
+                       (->pad-array padding (- (count (t/size input)) 2))
+                       (long-array (mapv clojure.core/long padding)))]
     (torch/pad (t/->tensor input) p-arr (clojure.core/name mode) (org.bytedeco.pytorch.DoubleOptional. (double value)))))
 
 (defn interpolate [input & {:keys [size scale-factor mode] :or {mode :nearest}}]
