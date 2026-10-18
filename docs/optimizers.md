@@ -48,6 +48,16 @@ After performing backpropagation (`autograd/backward`), update the parameters.
 (optim/step opt)
 ```
 
+### Learning-rate schedules
+
+Schedulers can inspect and update all parameter groups without rebuilding the
+optimizer:
+
+```clojure
+(optim/learning-rates opt)
+(optim/set-learning-rate! opt (* base-lr schedule-factor))
+```
+
 ## Training Step Example
 
 ```clojure

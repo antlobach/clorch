@@ -1,5 +1,5 @@
 (ns clorch.optim
-  (:import [org.bytedeco.pytorch SGD SGDOptions Adam AdamOptions AdamW AdamWOptions RMSprop RMSpropOptions Adagrad AdagradOptions Optimizer TensorVector]
+  (:import [org.bytedeco.pytorch SGD SGDOptions Adam AdamOptions AdamW AdamWOptions RMSprop RMSpropOptions Adagrad AdagradOptions Optimizer OptimizerParamGroupVector TensorVector]
            [org.bytedeco.javacpp DoublePointer]))
 
 (set! *warn-on-reflection* true)
@@ -107,3 +107,19 @@
 
 (defn step [^Optimizer opt]
   (.step opt))
+
+(defn learning-rates
+  "Returns the learning rate of every optimizer parameter group."
+  [^Optimizer optimizer]
+  (let [^OptimizerParamGroupVector groups (.param_groups optimizer)]
+    (mapv (fn [index]
+            (.get_lr (.options (.get groups (long index)))))
+          (range (.size groups)))))
+
+(defn set-learning-rate!
+  "Sets the learning rate of every optimizer parameter group and returns the optimizer."
+  [^Optimizer optimizer learning-rate]
+  (let [^OptimizerParamGroupVector groups (.param_groups optimizer)]
+    (dotimes [index (.size groups)]
+      (.set_lr (.options (.get groups (long index))) (double learning-rate))))
+  optimizer)
