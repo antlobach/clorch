@@ -61,6 +61,68 @@ Directly wraps LibTorch's optimized C++ RNN implementations.
 (nn/constant-pad2d 1 3.14)
 ```
 
+## Attention & Transformers
+
+### Multi-Head Attention
+
+`multihead-attention` mirrors `torch.nn.MultiheadAttention` with a packed QKV
+projection and batch-first inputs.
+
+```clojure
+;; MultiheadAttention(embed_dim=8, num_heads=2)
+(def attention (nn/multihead-attention 8 2 :dropout 0.0 :bias true))
+
+;; Self-attention
+(nn/forward attention x)
+
+;; Cross-attention with masks and cached key/value
+(nn/forward attention
+            {:query query
+             :key context
+             :value context
+             :attention-mask additive-or-bool-mask   ; [batch, 1, query, key] or broadcastable
+             :key-padding-mask padding-mask          ; [batch, key]; true = ignored
+             :causal? false
+             :rope {:cos cosines :sin sines :interleaved? true}
+             :cached-key cached-key
+             :cached-value cached-value
+             :return-kv? true})
+```
+
+Calling it with a plain tensor is self-attention. With `:return-kv?` the forward
+returns `{:output ... :key ... :value ...}` where `key`/`value` have shape
+`[batch, heads, key-length, head-dim]` and can be fed back as
+`:cached-key`/`:cached-value` on the next step. `:rope` accepts the pair
+`[cosines sines]` or a map with `:interleaved?`.
+
+### Transformer Encoder Layers and Encoders
+
+`transformer-encoder-layer` mirrors `torch.nn.TransformerEncoderLayer`
+(pre-norm with `:norm-first? true`, the default is post-norm) and
+`transformer-encoder` stacks layers, mirroring `torch.nn.TransformerEncoder`.
+
+```clojure
+(def layer (nn/transformer-encoder-layer 512 8
+                                        :feedforward-dim 2048
+                                        :dropout 0.1
+                                        :activation :gelu
+                                        :norm-first? true))
+(def encoder (nn/transformer-encoder layer 6))
+;; or from an explicit collection:
+(def encoder (nn/transformer-encoder [layer-a layer-b]))
+
+(nn/forward encoder x)
+```
+
+The layer forward accepts `:x` plus the attention options above, including
+`:key`/`:value` for cross-attention and `:cached-key`/`:cached-value`. When
+`:return-kv?` is passed, the encoder also returns the per-layer key/value
+cache used for incremental decoding:
+
+```clojure
+(let [{:keys [output cache]} (nn/forward encoder x :return-kv? true)])
+```
+
 ## Containers & Utilities
 
 ### Sequential

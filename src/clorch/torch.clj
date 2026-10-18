@@ -29,6 +29,7 @@
 ;; --- Memory Management ---
 
 (def ^:private ^ThreadLocal session-scope (ThreadLocal.))
+(def ^:private float-array-class (class (float-array 0)))
 
 (defn release!
   "Manually deletes the native C++ memory associated with a tensor or collection of tensors.
@@ -193,6 +194,8 @@
             (instance? Tensor data) data
             (and (record? data) (:tensor data)) (:tensor data)
             (number? data) (torch/tensor (clojure.core/float data))
+            (instance? float-array-class data)
+            (torch/tensor ^floats data (org.bytedeco.pytorch.TensorOptions.))
             (or (vector? data) (seq? data))
             (let [shape (loop [curr data s []] (if (coll? curr) (recur (first curr) (conj s (count curr))) s))
                   flat-data (clojure.core/flatten data)]
@@ -1613,7 +1616,7 @@
   (let [dst-t (->tensor dst)
         src-t (->tensor src)]
     (with-open [_ (NoGradGuard.)]
-      (.set_ dst-t src-t))
+      (.copy_ dst-t src-t))
     dst-t))
 
 (defn multinomial
@@ -2012,24 +2015,44 @@
                       :else (throw (IllegalArgumentException. (str "Invalid indexer: " spec))))))
       (.index ^Tensor t-final idx-vec))))
 
-(defn precompute-rope-freqs [dim seq-len & {:keys [theta] :or {theta 10000.0}}]
+(defn precompute-rope-freqs
+  "Precomputes rotary-embedding cosine and sine tables.
+
+  `interleaved?` selects adjacent pairs `(0,1), (2,3), ...`; the default uses
+  the half-split layout `(0,D/2), (1,D/2+1), ...`. Pass `device` to create
+  tables for inputs on a non-default device."
+  [dim seq-len & {:keys [theta interleaved? device]
+                  :or {theta 10000.0 interleaved? false}}]
   (let [freqs (div (arange 0 dim 2) (clojure.core/double dim))
         inv-freq (pow (clojure.core/float theta) (mul freqs -1.0))
-        t (arange seq-len)
-        freqs-matrix (outer t inv-freq)
-        emb (cat [freqs-matrix freqs-matrix] -1)]
+        freqs-matrix (outer (arange seq-len) inv-freq)
+        emb (if interleaved?
+              (repeat-interleave freqs-matrix 2 -1)
+              (cat [freqs-matrix freqs-matrix] -1))
+        emb (if device (to emb device) emb)]
     [(cos emb) (sin emb)]))
 
-(defn apply-rope [x cos-emb sin-emb]
-  (let [[_B _T _H D] (size x)
-        cos-emb (reshape cos-emb [1 _T 1 D])
-        sin-emb (reshape sin-emb [1 _T 1 D])
-        half-d (quot D 2)
-        x1 (ix x :_ :_ :_ [0 half-d])
-        x2 (ix x :_ :_ :_ [half-d D])
-        ;; standard rope rotation: [x1, x2] -> [x1*cos - x2*sin, x1*sin + x2*cos]
-        neg-x2 (mul x2 -1.0)
-        rotated-x (cat [neg-x2 x1] -1)]
+(defn apply-rope
+  "Applies rotary embeddings to `[batch, sequence, heads, head-dim]`.
+
+  Set `interleaved?` to rotate adjacent pairs instead of half-split pairs."
+  [x cos-emb sin-emb & {:keys [interleaved?] :or {interleaved? false}}]
+  (let [[batch-size sequence-length heads head-dim] (size x)
+        cos-emb (reshape (ix cos-emb [0 sequence-length] :_)
+                         [1 sequence-length 1 head-dim])
+        sin-emb (reshape (ix sin-emb [0 sequence-length] :_)
+                         [1 sequence-length 1 head-dim])
+        rotated-x
+        (if interleaved?
+          (let [pairs (reshape x [batch-size sequence-length heads
+                                  (quot head-dim 2) 2])
+                [even odd] (unbind pairs -1)]
+            (reshape (stack [(mul odd -1.0) even] -1)
+                     [batch-size sequence-length heads head-dim]))
+          (let [half-dim (quot head-dim 2)
+                first-half (ix x :_ :_ :_ [0 half-dim])
+                second-half (ix x :_ :_ :_ [half-dim head-dim])]
+            (cat [(mul second-half -1.0) first-half] -1)))]
     (add (mul x cos-emb) (mul rotated-x sin-emb))))
 
 ;; --- Extended Math ---

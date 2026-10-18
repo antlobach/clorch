@@ -49,6 +49,28 @@ The `clorch.nn.functional` namespace (aliased as `F`) contains functional versio
 (F/pad input [1 1 1 1] :mode :reflect)
 ```
 
+### Attention
+
+```clojure
+;; LibTorch's fused scaled-dot-product attention
+;; query/key/value: [batch, heads, seq, head-dim]
+(F/scaled-dot-product-attention q k v
+                                :attention-mask mask     ; boolean or additive float bias
+                                :dropout-p 0.0
+                                :causal? false
+                                :scale scale)            ; optional custom scale
+
+;; Combines an SDPA mask with a module-style key-padding mask.
+;; attention-mask: true participates / float bias (SDPA convention);
+;; key-padding-mask: [batch, key], true is ignored (module convention).
+(F/combine-attention-masks attention-mask key-padding-mask)
+```
+
+`combine-attention-masks` broadcasts the padding mask to
+`[batch, 1, 1, key-length]` and returns a boolean mask when both inputs are
+boolean, or an additive float bias when the attention mask is floating point.
+It returns the attention mask unchanged when no padding mask is given.
+
 ## Loss Functions
 See the [Loss Functions](losses.md) guide for a full list.
 

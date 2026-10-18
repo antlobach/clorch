@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [clorch.torch :as torch]
             [clorch.nn.functional :as F]
+            [clorch.nn.init :as init]
             [clorch.autograd :as autograd])
   (:import [org.bytedeco.pytorch LinearImpl LinearOptions ReLUImpl SigmoidImpl SoftmaxImpl DropoutImpl DropoutOptions FlattenImpl Conv1dImpl Conv1dOptions Conv2dImpl Conv2dOptions Conv3dImpl Conv3dOptions ConvTranspose1dImpl ConvTranspose1dOptions ConvTranspose2dImpl ConvTranspose2dOptions ConvTranspose3dImpl ConvTranspose3dOptions BatchNorm1dImpl BatchNorm2dImpl BatchNorm3dImpl BatchNormOptions GroupNormImpl GroupNormOptions InstanceNorm1dImpl InstanceNorm2dImpl InstanceNorm3dImpl InstanceNormOptions RNNImpl RNNOptions LSTMImpl LSTMOptions GRUImpl GRUOptions EmbeddingImpl EmbeddingOptions Module Tensor TensorVector TanhImpl ELUImpl SELUImpl CELUImpl CELUOptions ELUOptions LeakyReLUImpl LeakyReLUOptions ReLU6Impl SoftplusImpl SoftplusOptions SoftsignImpl SoftminImpl MishImpl HardtanhImpl HardtanhOptions LogSigmoidImpl LogSoftmaxImpl HardshrinkImpl HardshrinkOptions SoftshrinkImpl SoftshrinkOptions TanhshrinkImpl ThresholdImpl ThresholdOptions GLUImpl GLUOptions RReLUImpl RReLUOptions AlphaDropoutImpl FeatureAlphaDropoutImpl BilinearImpl BilinearOptions]
            [org.bytedeco.pytorch.global torch$ScalarType]
@@ -70,7 +71,9 @@
       (dotimes [i (.size thing)]
         (.push_back out ^Tensor (torch/to (.get thing (clojure.core/long i)) dtype-or-device)))
       out)
-    (instance? Parameter thing) (assoc thing :tensor (torch/to (:tensor thing) dtype-or-device))
+    (instance? Parameter thing)
+    (parameter (torch/to (:tensor thing) dtype-or-device)
+               :requires-grad (.requires_grad ^Tensor (:tensor thing)))
     (map? thing) (into (empty thing) (for [[k v] thing] [k (to v dtype-or-device)]))
     (sequential? thing) (mapv #(to % dtype-or-device) thing)
     (vector? thing) (mapv #(to % dtype-or-device) thing)
@@ -407,6 +410,79 @@
                    (walk v (str path "[" i "]")))))]
        (walk thing prefix)
        @res))))
+
+(defn load-flat-state-dict!
+  "Copies a flat, dotted-path state dictionary into a model.
+
+  Native parameter views are consumed while their owning parameter list is alive,
+  avoiding borrowed JavaCPP pointers escaping the traversal."
+  [thing values]
+  (let [loaded (atom #{})]
+    (letfn [(copy-value! [path destination]
+              (when-some [source (get values path)]
+                (torch/copy- destination source)
+                (swap! loaded conj path)))
+            (walk [node path]
+              (cond
+                (instance? Module node)
+                (let [named-p (.named_parameters ^Module node)
+                      pairs (.pairs named-p)]
+                  (dotimes [i (.size named-p)]
+                    (let [parameter-name (.getString (.first pairs (clojure.core/long i)))
+                          full-name (if (empty? path)
+                                      parameter-name
+                                      (str path "." parameter-name))]
+                      (copy-value! full-name (.second pairs (clojure.core/long i))))))
+
+                (instance? Parameter node)
+                (copy-value! path (:tensor node))
+
+                (instance? Tensor node)
+                (copy-value! path node)
+
+                (map? node)
+                (doseq [[k v] node]
+                  (walk v (if (empty? path)
+                            (clojure.core/name k)
+                            (str path "." (clojure.core/name k)))))
+
+                (vector? node)
+                (doseq [[i v] (map-indexed vector node)]
+                  (walk v (str path "[" i "]")))))]
+      (walk thing "")
+      @loaded)))
+
+(defn flat-parameter-names
+  "Returns the flat paths accepted by load-flat-state-dict! without retaining
+  borrowed native parameter views."
+  [thing]
+  (let [names (atom #{})]
+    (letfn [(walk [node path]
+              (cond
+                (instance? Module node)
+                (let [named-p (.named_parameters ^Module node)
+                      pairs (.pairs named-p)]
+                  (dotimes [i (.size named-p)]
+                    (let [parameter-name (.getString (.first pairs (clojure.core/long i)))]
+                      (swap! names conj
+                             (if (empty? path)
+                               parameter-name
+                               (str path "." parameter-name))))))
+
+                (or (instance? Parameter node) (instance? Tensor node))
+                (swap! names conj path)
+
+                (map? node)
+                (doseq [[k v] node]
+                  (walk v (if (empty? path)
+                            (clojure.core/name k)
+                            (str path "." (clojure.core/name k)))))
+
+                (vector? node)
+                (doseq [[i v] (map-indexed vector node)]
+                  (walk v (str path "[" i "]")))))]
+      (walk thing "")
+      @names)))
 
 ;; --- Layer Implementations ---
 
@@ -785,6 +861,7 @@
 
 (defmacro defmodel [model-name args init-bindings & forward-specs]
   (let [field-syms (take-nth 2 init-bindings)
+        field-keys (mapv keyword field-syms)
         forward-fn (first (filter #(= (first %) 'forward) forward-specs))
         forward-args (second forward-fn)
         forward-body (nnext forward-fn)
@@ -795,22 +872,262 @@
          (-forward [this# ~(first forward-args)]
            (let [{:keys [~@field-syms]} this#] ~@forward-body))
          (-train [this# bool#]
-           (doseq [f# [~@field-syms]]
+           (doseq [f# [~@field-keys]]
              (let [v# (get this# f#)]
                (when (or (satisfies? IModule v#) (coll? v#))
                  (train v# bool#))))
            this#)
          (-to [this# dtype-or-device#]
-           (let [updates# (into {} (for [f# [~@field-syms]]
+           (let [updates# (into {} (for [f# [~@field-keys]]
                                      (let [v# (get this# f#)]
-                                       [f# (if (or (satisfies? IModule v#) (coll? v#) (instance? org.bytedeco.pytorch.Tensor v#))
-                                             (to v# dtype-or-device#)
-                                             v#)])))]
+                                       [f# (to v# dtype-or-device#)])))]
              (clojure.core/merge this# updates#)))
          clojure.lang.IFn
          (invoke [this# x#] (forward this# x#)))
        (defn ~model-name ~args
          (let [~@init-bindings] (~(symbol (str "->" record-name)) ~@field-syms))))))
+
+(defn- apply-attention-rope
+  [tensor rope]
+  (if-not rope
+    tensor
+    (let [{:keys [cos sin interleaved?]}
+          (if (map? rope)
+            rope
+            {:cos (first rope) :sin (second rope)})]
+      (torch/apply-rope tensor cos sin :interleaved? (boolean interleaved?)))))
+
+(defn- project-attention-inputs
+  [^LinearImpl in-projection bias? dimension query attention-key value]
+  (if (and (identical? query attention-key)
+           (identical? query value))
+    (torch/chunk (forward in-projection query) 3 -1)
+    (let [weight (.weight in-projection)
+          bias (when bias? (.bias in-projection))
+          q-weight (torch/ix weight [0 dimension] :_)
+          q-bias (when bias (torch/ix bias [0 dimension]))
+          q (F/linear query q-weight q-bias)]
+      (if (identical? attention-key value)
+        (let [kv-weight (torch/ix weight [dimension (* 3 dimension)] :_)
+              kv-bias (when bias (torch/ix bias [dimension (* 3 dimension)]))
+              [k v] (torch/chunk
+                     (F/linear attention-key kv-weight kv-bias)
+                     2
+                     -1)]
+          [q k v])
+        (let [k-weight (torch/ix weight [dimension (* 2 dimension)] :_)
+              v-weight (torch/ix weight [(* 2 dimension) (* 3 dimension)] :_)
+              k-bias (when bias (torch/ix bias [dimension (* 2 dimension)]))
+              v-bias (when bias (torch/ix bias [(* 2 dimension) (* 3 dimension)]))]
+          [q
+           (F/linear attention-key k-weight k-bias)
+           (F/linear value v-weight v-bias)])))))
+
+(defrecord MultiHeadAttentionRecord
+           [in-projection out-projection dimension head-count head-dim
+            dropout-p bias? training?]
+  IModule
+  (-forward [_ input]
+    (let [input (if (map? input) input {:query input})
+          query (torch/->tensor (:query input))
+          attention-key (torch/->tensor (or (:key input) query))
+          value (torch/->tensor (or (:value input) attention-key))
+          cached-key (:cached-key input)
+          cached-value (:cached-value input)
+          _ (when (not= (boolean cached-key) (boolean cached-value))
+              (throw (IllegalArgumentException.
+                      "cached-key and cached-value must be supplied together")))
+          [batch-size query-length _] (torch/size query)
+          [q projected-key projected-value]
+          (if cached-key
+            [(let [[q _ _] (project-attention-inputs
+                            in-projection bias? dimension query query query)]
+               q)
+             nil
+             nil]
+            (project-attention-inputs
+             in-projection bias? dimension query attention-key value))
+          key-length (if cached-key
+                       (nth (torch/size cached-key) 2)
+                       (second (torch/size projected-key)))
+          q (torch/reshape q
+                           [batch-size query-length head-count head-dim])
+          k (when projected-key
+              (torch/reshape projected-key
+                             [batch-size key-length head-count head-dim]))
+          v (when projected-value
+              (torch/reshape projected-value
+                             [batch-size key-length head-count head-dim]))
+          rope (:rope input)
+          q (apply-attention-rope q rope)
+          k (when k (apply-attention-rope k rope))
+          q (torch/transpose q 1 2)
+          k (or cached-key (torch/transpose k 1 2))
+          v (or cached-value (torch/transpose v 1 2))
+          attention-mask
+          (F/combine-attention-masks (:attention-mask input)
+                                     (:key-padding-mask input))
+          attended
+          (F/scaled-dot-product-attention
+           q k v
+           :attention-mask attention-mask
+           :dropout-p (if @training? dropout-p 0.0)
+           :causal? (boolean (:causal? input)))
+          merged (torch/reshape
+                  (torch/transpose attended 1 2)
+                  [batch-size query-length dimension])
+          output (forward out-projection merged)]
+      (if (:return-kv? input)
+        {:output output :key k :value v}
+        output)))
+  (-train [this training]
+    (train in-projection training)
+    (train out-projection training)
+    (reset! training? (boolean training))
+    this)
+  (-to [this dtype-or-device]
+    (assoc this
+           :in-projection (to in-projection dtype-or-device)
+           :out-projection (to out-projection dtype-or-device)))
+  clojure.lang.IFn
+  (invoke [this input] (forward this input)))
+
+(defn multihead-attention
+  "Creates batch-first multi-head attention with packed QKV projection.
+
+  Forward accepts a tensor for self-attention or a map with `:query`, optional
+  `:key`/`:value`, `:attention-mask`, `:key-padding-mask`, `:causal?`, `:rope`,
+  `:cached-key`/`:cached-value`, and `:return-kv?`."
+  [dimension head-count & {dropout-probability :dropout
+                           bias :bias
+                           :or {dropout-probability 0.0 bias true}}]
+  (when-not (zero? (mod dimension head-count))
+    (throw (IllegalArgumentException.
+            "dimension must be divisible by head-count")))
+  (let [in-projection (linear dimension (* 3 dimension) :bias bias)
+        out-projection (linear dimension dimension :bias bias)]
+    (init/xavier-uniform! (.weight ^LinearImpl in-projection))
+    (when bias
+      (init/zeros! (.bias ^LinearImpl in-projection)))
+    (->MultiHeadAttentionRecord
+     in-projection out-projection dimension head-count
+     (quot dimension head-count) (double dropout-probability) (boolean bias) (atom true))))
+
+(defn- transformer-activation [activation]
+  (case activation
+    :relu (relu)
+    :gelu (gelu)
+    (if (satisfies? IModule activation)
+      activation
+      (throw (IllegalArgumentException.
+              "activation must be :relu, :gelu, or an IModule")))))
+
+#_{:clj-kondo/ignore [:unresolved-symbol]}
+(defmodel TransformerEncoderLayer
+  [dimension head-count & {:keys [feedforward-dim dropout activation
+                                  norm-first? bias]
+                           :or {dropout 0.0 activation :relu
+                                norm-first? false bias true}}]
+  [attention (multihead-attention dimension head-count
+                                  :dropout dropout :bias bias)
+   norm1 (layernorm dimension)
+   norm2 (layernorm dimension)
+   feedforward [(linear dimension (or feedforward-dim (* 4 dimension))
+                        :bias bias)
+                (transformer-activation activation)
+                (clorch.nn/dropout dropout)
+                (linear (or feedforward-dim (* 4 dimension)) dimension
+                        :bias bias)]
+   residual-dropout1 (clorch.nn/dropout dropout)
+   residual-dropout2 (clorch.nn/dropout dropout)
+   pre-norm? norm-first?]
+  (forward [input]
+           (let [input (if (map? input) input {:x input})
+                 x (:x input)
+                 cached? (boolean (:cached-key input))
+                 normalized-query (if pre-norm? (forward norm1 x) x)
+                 normalized-key
+                 (when-not cached?
+                   (when-let [attention-key (:key input)]
+                     (if pre-norm?
+                       (forward norm1 attention-key)
+                       attention-key)))
+                 normalized-value
+                 (when-not cached?
+                   (when-let [value (:value input)]
+                     (if pre-norm?
+                       (forward norm1 value)
+                       value)))
+                 attention-result
+                 (forward attention
+                          (assoc input
+                                 :query normalized-query
+                                 :key normalized-key
+                                 :value normalized-value))
+                 attended (if (:return-kv? input)
+                            (:output attention-result)
+                            attention-result)
+                 attention-residual
+                 (torch/add x (forward residual-dropout1 attended))
+                 after-attention
+                 (if pre-norm?
+                   attention-residual
+                   (forward norm1 attention-residual))
+                 feedforward-input
+                 (if pre-norm?
+                   (forward norm2 after-attention)
+                   after-attention)
+                 output
+                 (torch/add after-attention
+                            (forward residual-dropout2
+                                     (forward feedforward feedforward-input)))
+                 output (if pre-norm? output (forward norm2 output))]
+             (if (:return-kv? input)
+               (assoc attention-result :output output)
+               output))))
+
+(defn transformer-encoder-layer
+  "Creates a batch-first transformer encoder layer.
+
+  The forward map accepts `:x` plus the attention options accepted by
+  `multihead-attention`. Optional `:key` and `:value` enable cross-attention."
+  [dimension head-count & options]
+  (clojure.core/apply TransformerEncoderLayer dimension head-count options))
+
+#_{:clj-kondo/ignore [:unresolved-symbol]}
+(defmodel TransformerEncoder [blocks]
+  [layers (vec blocks)]
+  (forward [input]
+           (let [input (if (map? input) input {:x input})]
+             (if (:return-kv? input)
+               (reduce (fn [{:keys [output cache]} [index layer]]
+                         (let [cached (nth (:cache input) index nil)
+                               result
+                               (forward layer
+                                        (cond-> (assoc input :x output)
+                                          cached
+                                          (assoc :cached-key (:key cached)
+                                                 :cached-value (:value cached))))]
+                           {:output (:output result)
+                            :cache (conj cache
+                                         {:key (:key result)
+                                          :value (:value result)})}))
+                       {:output (:x input) :cache []}
+                       (map-indexed vector layers))
+               (reduce (fn [state layer]
+                         (forward layer (assoc input :x state)))
+                       (:x input)
+                       layers)))))
+
+(defn transformer-encoder
+  "Creates an encoder from a layer collection or a zero-argument layer factory."
+  ([layers]
+   (TransformerEncoder layers))
+  ([layer-factory layer-count]
+   (when-not (fn? layer-factory)
+     (throw (IllegalArgumentException.
+             "two-argument transformer-encoder requires a layer factory")))
+   (TransformerEncoder (repeatedly layer-count layer-factory))))
 
 (defn generate
   "Generates tokens autoregressively."
