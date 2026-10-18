@@ -118,6 +118,17 @@
           (.push_back out p)))
       out)))
 
+(defn set-trainable!
+  "Enables or disables gradient computation for every parameter in `thing`.
+  Returns `thing` so model sections can be frozen before optimizer creation."
+  [thing trainable?]
+  (let [^TensorVector params (parameters thing)]
+    (dotimes [index (.size params)]
+      (autograd/set-requires-grad
+       (.get params (clojure.core/long index))
+       (clojure.core/boolean trainable?))))
+  thing)
+
 (defn clip-grad-norm!
   "Clips the total norm of an iterable of parameters."
   [params-list max-norm]
@@ -250,7 +261,9 @@
 (extend-type clojure.lang.APersistentVector
   IModule
   (-forward [this x] (reduce (fn [acc layer] (forward layer acc)) x this))
-  (-train [this bool] (run! #(train % bool) this) this)
+  (-train [this bool]
+    (run! #(when (satisfies? IModule %) (train % bool)) this)
+    this)
   (-to [this dtype-or-device] (mapv #(to % dtype-or-device) this)))
 
 (extend-type clojure.lang.APersistentMap
@@ -258,7 +271,7 @@
   (-forward [_ _]
     (throw (Exception. "Cannot call forward on a raw map.")))
   (-train [this bool]
-    (run! #(train % bool) (vals this))
+    (run! #(when (satisfies? IModule %) (train % bool)) (vals this))
     this)
   (-to [this dtype-or-device]
     (into (empty this) (for [[k v] this] [k (to v dtype-or-device)]))))
@@ -411,6 +424,48 @@
        (walk thing prefix)
        @res))))
 
+(defn clone-flat-state-dict
+  "Copies a model's flat parameter state to independent tensors.
+
+  Copies default to CPU and are retained across `with-torch` scopes. The caller
+  owns the returned map and should eventually pass it to `torch/release!`."
+  [thing & {:keys [device] :or {device :cpu}}]
+  (let [values (atom {})]
+    (letfn [(capture! [path value]
+              (let [copy (autograd/no-grad
+                          (torch/clone (torch/to value device)))]
+                (torch/retain! copy)
+                (swap! values assoc path copy)))
+            (walk [node path]
+              (cond
+                (instance? Module node)
+                (let [named-p (.named_parameters ^Module node)
+                      pairs (.pairs named-p)]
+                  (dotimes [i (.size named-p)]
+                    (let [parameter-name (.getString (.first pairs (clojure.core/long i)))
+                          full-name (if (empty? path)
+                                      parameter-name
+                                      (str path "." parameter-name))]
+                      (capture! full-name (.second pairs (clojure.core/long i))))))
+
+                (instance? Parameter node)
+                (capture! path (:tensor node))
+
+                (instance? Tensor node)
+                (capture! path node)
+
+                (map? node)
+                (doseq [[k v] node]
+                  (walk v (if (empty? path)
+                            (clojure.core/name k)
+                            (str path "." (clojure.core/name k)))))
+
+                (vector? node)
+                (doseq [[i v] (map-indexed vector node)]
+                  (walk v (str path "[" i "]")))))]
+      (walk thing "")
+      @values)))
+
 (defn load-flat-state-dict!
   "Copies a flat, dotted-path state dictionary into a model.
 
@@ -491,21 +546,27 @@
   (-forward [this x]
     (let [mean (torch/mean x -1 :keepdim true)
           v (torch/var x -1 :keepdim true :unbiased false)
-          norm-x (torch/div (torch/sub x mean) (torch/sqrt (torch/add v (:eps this))))]
-      (torch/add (torch/mul norm-x (:gamma this)) (:beta this))))
+          norm-x (torch/div (torch/sub x mean) (torch/sqrt (torch/add v (:eps this))))
+          scaled (torch/mul norm-x (:gamma this))]
+      (if-some [beta (:beta this)]
+        (torch/add scaled beta)
+        scaled)))
   (-train [this _] this)
   (-to [this dtype-or-device]
     (assoc this
            :gamma (to (:gamma this) dtype-or-device)
-           :beta (to (:beta this) dtype-or-device))))
+           :beta (some-> (:beta this) (to dtype-or-device)))))
 
 (defn layernorm
-  "Applies Layer Normalization over a mini-batch of inputs."
-  [normalized-shape & {:keys [eps] :or {eps 1e-5}}]
-  (let [shape (if (number? normalized-shape) [(clojure.core/long normalized-shape)] (mapv clojure.core/long normalized-shape))]
+  "Applies Layer Normalization over a mini-batch of inputs.
+  Set `:bias? false` for PyTorch's bias-free LayerNorm variant."
+  [normalized-shape & {:keys [eps bias?] :or {eps 1e-5 bias? true}}]
+  (let [shape (if (number? normalized-shape)
+                [(clojure.core/long normalized-shape)]
+                (mapv clojure.core/long normalized-shape))]
     (->LayerNormRecord
      (parameter (torch/ones shape))
-     (parameter (torch/zeros shape))
+     (when bias? (parameter (torch/zeros shape)))
      eps)))
 
 (defrecord RMSNormRecord [weight eps]

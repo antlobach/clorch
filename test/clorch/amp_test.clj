@@ -1,6 +1,8 @@
 (ns clorch.amp-test
   (:require [clojure.test :refer [deftest is testing]]
             [clorch.amp :as amp]
+            [clorch.nn :as nn]
+            [clorch.optim :as optim]
             [clorch.torch :as t])
   (:import [org.bytedeco.pytorch Tensor]
            [org.bytedeco.pytorch.global torch torch$DeviceType]))
@@ -28,6 +30,20 @@
     (is (thrown? clojure.lang.ExceptionInfo
                  (amp/load-scaler-state! scaler
                                          {:scale -1.0 :growth-tracker 0})))))
+
+(deftest gradient-unscale-before-clipping-test
+  (t/with-torch
+    (let [parameter (t/tensor [10.0] {:requires-grad true})
+          optimizer (optim/sgd [parameter] :lr 1.0)
+          scaler (amp/grad-scaler {:initial-scale 4.0})]
+      (amp/backward! scaler (t/mul parameter parameter))
+      (is (true? (amp/unscale! scaler optimizer)))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                            #"already unscaled"
+                            (amp/unscale! scaler optimizer)))
+      (nn/clip-grad-norm! [parameter] 1.0)
+      (is (true? (amp/step! scaler optimizer)))
+      (is (< (Math/abs (- 9.0 (t/item-float parameter))) 1.0e-6)))))
 
 (deftest gradient-scaler-validation-test
   (testing "invalid dynamic scaling factors fail at construction"

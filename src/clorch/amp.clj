@@ -1,7 +1,8 @@
 (ns clorch.amp
   "CUDA/CPU autocast and dynamic gradient scaling."
   (:require [clorch.torch :as t])
-  (:import [org.bytedeco.pytorch Optimizer Scalar Tensor TensorVector]
+  (:import [java.util IdentityHashMap]
+           [org.bytedeco.pytorch Optimizer Scalar Tensor TensorVector]
            [org.bytedeco.pytorch.global torch torch$DeviceType torch$ScalarType]))
 
 (set! *warn-on-reflection* true)
@@ -49,7 +50,8 @@
   `(call-with-autocast ~options (fn [] ~@body)))
 
 (defrecord GradScaler
-           [scale growth-factor backoff-factor growth-interval growth-tracker enabled?])
+           [scale growth-factor backoff-factor growth-interval growth-tracker
+            enabled? pending-optimizers])
 
 (defn grad-scaler
   "Creates a dynamic FP16 loss scaler. Disable it for bfloat16 training."
@@ -75,7 +77,8 @@
                  (double backoff-factor)
                  (long growth-interval)
                  (atom 0)
-                 (boolean enabled?))))
+                 (boolean enabled?)
+                 (IdentityHashMap.))))
 
 (defn current-scale [scaler]
   @(:scale scaler))
@@ -144,16 +147,47 @@
       (swap! (:scale scaler) * (:backoff-factor scaler))
       (reset! (:growth-tracker scaler) 0))))
 
+(defn unscale!
+  "Unscales an optimizer's gradients before clipping or inspection.
+
+  Returns whether all gradients are finite. Each optimizer may be unscaled once
+  between calls to `step!`."
+  [scaler ^Optimizer optimizer]
+  (if-not (:enabled? scaler)
+    true
+    (let [^IdentityHashMap pending (:pending-optimizers scaler)]
+      (locking pending
+        (when (.containsKey pending optimizer)
+          (throw (ex-info "Optimizer gradients were already unscaled for this step" {})))
+        (let [gradients (vec (optimizer-gradients optimizer))]
+          (unscale-gradients! gradients @(:scale scaler))
+          (let [finite? (globally-finite? (gradients-finite? gradients))]
+            (.put pending optimizer (boolean finite?))
+            finite?))))))
+
+(defn- take-unscaled-state! [scaler ^Optimizer optimizer]
+  (let [^IdentityHashMap pending (:pending-optimizers scaler)]
+    (locking pending
+      (when (.containsKey pending optimizer)
+        (let [finite? (.get pending optimizer)]
+          (.remove pending optimizer)
+          finite?)))))
+
 (defn step!
-  "Unscales gradients, synchronizes overflow state, conditionally steps optimizer,
-  and updates the dynamic scale. Returns true when the optimizer stepped."
+  "Unscales gradients when needed, synchronizes overflow state, conditionally
+  steps the optimizer, and updates the dynamic scale. Returns true when the
+  optimizer stepped."
   [scaler ^Optimizer optimizer]
   (if-not (:enabled? scaler)
     (do (.step optimizer) true)
-    (let [gradients (vec (optimizer-gradients optimizer))
-          finite? (globally-finite? (gradients-finite? gradients))]
+    (let [previously-unscaled? (let [^IdentityHashMap pending (:pending-optimizers scaler)]
+                                 (locking pending (.containsKey pending optimizer)))
+          finite? (if previously-unscaled?
+                    (take-unscaled-state! scaler optimizer)
+                    (do
+                      (unscale! scaler optimizer)
+                      (take-unscaled-state! scaler optimizer)))]
       (when finite?
-        (unscale-gradients! gradients @(:scale scaler))
         (.step optimizer))
       (update-scale! scaler finite?)
       finite?)))

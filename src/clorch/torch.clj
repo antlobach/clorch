@@ -316,6 +316,43 @@
   (let [t (torch/zeros (long-array dims))]
     (if opts (tensor t opts) t)))
 
+(defn empty-like
+  "Returns an uninitialized tensor with the input tensor's shape and options."
+  [input & [opts]]
+  (let [result (torch/empty_like (->tensor input))]
+    (if opts (tensor result opts) result)))
+
+(defn zeros-like
+  "Returns a zero-filled tensor with the input tensor's shape and options."
+  [input & [opts]]
+  (let [result (torch/zeros_like (->tensor input))]
+    (if opts (tensor result opts) result)))
+
+(defn ones-like
+  "Returns a one-filled tensor with the input tensor's shape and options."
+  [input & [opts]]
+  (let [result (torch/ones_like (->tensor input))]
+    (if opts (tensor result opts) result)))
+
+(defn full-like
+  "Returns a tensor filled with `value`, preserving the input tensor's shape and options."
+  [input value & [opts]]
+  (with-open [scalar (Scalar. (clojure.core/double value))]
+    (let [result (torch/full_like (->tensor input) scalar)]
+      (if opts (tensor result opts) result))))
+
+(defn rand-like
+  "Returns uniform random values with the input tensor's shape and options."
+  [input & [opts]]
+  (let [result (torch/rand_like (->tensor input))]
+    (if opts (tensor result opts) result)))
+
+(defn randn-like
+  "Returns standard-normal values with the input tensor's shape and options."
+  [input & [opts]]
+  (let [result (torch/randn_like (->tensor input))]
+    (if opts (tensor result opts) result)))
+
 (defn eye
   "Returns a 2-D tensor with ones on the diagonal and zeros elsewhere.
 
@@ -1691,6 +1728,42 @@
   ([a dim & {:keys [unbiased keepdim] :or {unbiased true keepdim false}}]
    (torch/var (->tensor a) (long-array (if (number? dim) [dim] dim)) (clojure.core/boolean unbiased) (clojure.core/boolean keepdim))))
 
+(defn std
+  "Returns the standard deviation, optionally over one or more dimensions."
+  ([a] (torch/std (->tensor a)))
+  ([a dim & {:keys [unbiased keepdim] :or {unbiased true keepdim false}}]
+   (torch/std (->tensor a)
+              (long-array (if (number? dim) [dim] dim))
+              (clojure.core/boolean unbiased)
+              (clojure.core/boolean keepdim))))
+
+(defn prod
+  "Returns the product of all elements or of elements along `dim`."
+  ([a] (torch/prod (->tensor a)))
+  ([a dim & {:keys [keepdim] :or {keepdim false}}]
+   (torch/prod (->tensor a)
+               (clojure.core/long dim)
+               (clojure.core/boolean keepdim)
+               (ScalarTypeOptional.))))
+
+(defn median
+  "Returns the median, or `[values indices]` when reducing along a dimension."
+  ([a] (torch/median (->tensor a)))
+  ([a dim & {:keys [keepdim] :or {keepdim false}}]
+   (let [result (torch/median (->tensor a)
+                              (clojure.core/long dim)
+                              (clojure.core/boolean keepdim))]
+     [(.get0 result) (.get1 result)])))
+
+(defn nanmean
+  "Returns the mean while ignoring NaNs."
+  ([a] (torch/nanmean (->tensor a)))
+  ([a dim & {:keys [keepdim] :or {keepdim false}}]
+   (torch/nanmean (->tensor a)
+                  (long-array (if (number? dim) [dim] dim))
+                  (clojure.core/boolean keepdim)
+                  (ScalarTypeOptional.))))
+
 (defn max
   "Returns the maximum value of all elements in the input tensor.
    
@@ -1751,6 +1824,16 @@
    ```"
   [t dims]
   (.view (->tensor t) (long-array dims)))
+
+(defn contiguous
+  "Returns contiguous storage for a tensor, copying only when required."
+  [t]
+  (.contiguous (->tensor t)))
+
+(defn expand-as
+  "Expands singleton dimensions to match `other` without allocating new storage."
+  [t other]
+  (.expand_as (->tensor t) (->tensor other)))
 
 (defn select
   "Returns a new tensor which is a sliced version of the input tensor 
@@ -2371,6 +2454,36 @@
                   (clojure.core/boolean stable))))
 
 (defn argwhere [t] (torch/argwhere (->tensor t)))
+
+(defn cummax
+  "Returns `[values indices]` for the cumulative maximum along `dim`."
+  [t dim]
+  (let [result (torch/cummax (->tensor t) (clojure.core/long dim))]
+    [(.get0 result) (.get1 result)]))
+
+(defn isin
+  "Tests whether each element occurs in `test-elements`."
+  [elements test-elements & {:keys [assume-unique? invert?]
+                             :or {assume-unique? false invert? false}}]
+  (torch/isin (->tensor elements)
+              (->tensor test-elements)
+              (clojure.core/boolean assume-unique?)
+              (clojure.core/boolean invert?)))
+
+(defn unique
+  "Returns the sorted unique values from a tensor."
+  [t]
+  (let [[sorted-values _] (sort (reshape t [-1]))
+        result (torch/unique_consecutive sorted-values)]
+    (.get0 result)))
+
+(defn scatter
+  "Writes `src` values into `input` at `indices` along `dim`."
+  [input dim indices src]
+  (torch/scatter (->tensor input)
+                 (clojure.core/long dim)
+                 (->tensor indices)
+                 (->tensor src)))
 (defn kron [a b] (torch/kron (->tensor a) (->tensor b)))
 
 (defn tensordot

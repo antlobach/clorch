@@ -62,3 +62,42 @@
           output (nn/forward model (t/ones [1 3]))]
       (is (= #{"[0].weight" "[0].bias"} names loaded))
       (is (= 10.0 (double (t/item-float (t/sum output))))))))
+
+(deftest model-freeze-and-snapshot-test
+  (t/with-torch
+    (let [model (nn/sequential (nn/linear 2 1))]
+      (testing "model sections can be frozen and unfrozen"
+        (nn/set-trainable! model false)
+        (is (zero? (.size (nn/parameters model :trainable-only true))))
+        (nn/set-trainable! model true)
+        (is (= 2 (.size (nn/parameters model :trainable-only true)))))
+      (testing "a copied state restores parameters after later updates"
+        (let [snapshot (nn/clone-flat-state-dict model)]
+          (try
+            (nn/load-flat-state-dict!
+             model
+             {"[0].weight" (t/full [1 2] 3.0)
+              "[0].bias" (t/full [1] 4.0)})
+            (nn/load-flat-state-dict! model snapshot)
+            (is (= (set (keys snapshot)) (nn/flat-parameter-names model)))
+            (is (every? (fn [[parameter-name value]]
+                          (t/item-float
+                           (t/all (t/eq value
+                                        (get (nn/named-parameters model) parameter-name)))))
+                        snapshot))
+            (finally
+              (t/release! snapshot))))))))
+
+(deftest bias-free-layernorm-test
+  (t/with-torch
+    (let [layer (nn/layernorm 3 :bias? false)
+          output (nn/forward layer (t/tensor [[1.0 2.0 3.0]]))]
+      (is (= 1 (.size (nn/parameters layer))))
+      (is (= [1 3] (t/size output)))
+      (is (< (Math/abs (t/item-float (t/mean output))) 1.0e-6)))))
+
+(deftest training-mode-ignores-configuration-values
+  (let [dropout (nn/dropout 0.5)
+        model {:layers [dropout 1.0] :config {:dropout 0.5}}]
+    (is (identical? model (nn/train model false)))
+    (is (identical? model (nn/train model true)))))

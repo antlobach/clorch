@@ -111,6 +111,14 @@
   (let [dim (if (map? dim-or-opts) (:dim dim-or-opts) dim-or-opts)]
     (torch/softmax (t/->tensor tensor) (long dim) (org.bytedeco.pytorch.ScalarTypeOptional.))))
 
+(defn one-hot
+  "Returns a one-hot encoding of an integer tensor.
+  Infers the class count when `num-classes` is omitted."
+  ([tensor]
+   (torch/one_hot (t/->tensor tensor)))
+  ([tensor num-classes]
+   (torch/one_hot (t/->tensor tensor) (long num-classes))))
+
 (defn dropout [tensor p & {:keys [training?] :or {training? true}}]
   (torch/dropout (t/->tensor tensor) (double p) (boolean training?)))
 
@@ -147,12 +155,12 @@
               (t/logical-and attention-mask allowed)
 
               (.is_floating_point attention-mask)
-              (let [padding-bias (t/to
-                                  (t/masked-fill
-                                   (t/zeros [batch-size 1 1 key-length])
+              (let [padding-bias (t/masked-fill
+                                  (t/zeros-like
                                    padding-mask
-                                   Double/NEGATIVE_INFINITY)
-                                  (t/dtype attention-mask))]
+                                   {:dtype (t/dtype attention-mask)})
+                                  padding-mask
+                                  Double/NEGATIVE_INFINITY)]
                 (t/add attention-mask padding-bias))
 
               :else

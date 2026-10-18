@@ -52,6 +52,10 @@ Clorch supports the full suite of LibTorch factory methods.
 (t/randperm 5)      ;; Random permutation of [0, 1, 2, 3, 4]
 ```
 
+Factories ending in `-like` preserve the source tensor's shape, dtype, and
+device: `empty-like`, `zeros-like`, `ones-like`, `full-like`, `rand-like`, and
+`randn-like`.
+
 ## Basic Operations
 
 ### Element-wise Math
@@ -98,7 +102,12 @@ Most operations work exactly like their Clojure or PyTorch counterparts.
 
 ;; Keep dimensions
 (t/sum x 1 :keepdim true) ;; [[3], [7]]
+
 ```
+
+Additional reductions include `prod`, `std`, `median`, `nanmean`, and `cummax`.
+Dimension reductions accept the same `:keepdim` convention; `std` also accepts
+`:unbiased`.
 
 ## Shape Management
 
@@ -137,6 +146,9 @@ Clorch supports the standard PyTorch `reshape` and `view` APIs, including dimens
 (t/unsqueeze x 0) ;; [1 1 10 1]
 (t/expand (t/tensor [1 2 3]) [3 3]) ;; Expand to [3 3] matrix
 ```
+
+Use `expand-as` to match another tensor's shape and `contiguous` before an
+operation that requires contiguous storage.
 
 ## Utility Methods
 
@@ -192,6 +204,9 @@ Move models with `(nn/to model device)`. A CUDA model and its input tensors must
 (t/topk x 5)     ;; Top 5 values and their indices
 (t/sort x :descending true) ;; Sorted values and indices
 ```
+
+`unique` returns sorted unique values, `isin` performs membership testing, and
+`scatter` returns a copy with source values written at the supplied indices.
 
 ## Sampling (Generative AI)
 

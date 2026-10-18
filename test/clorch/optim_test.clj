@@ -36,6 +36,13 @@
             (optim/step opt)
             (is (some? opt))))))))
 
+(deftest optimizer-learning-rate-test
+  (t/with-torch
+    (let [optimizer (optim/adamw (nn/parameters (nn/linear 2 1)) :lr 0.01)]
+      (is (= [0.01] (optim/learning-rates optimizer)))
+      (is (identical? optimizer (optim/set-learning-rate! optimizer 0.0025)))
+      (is (= [0.0025] (optim/learning-rates optimizer))))))
+
 (defn- step-quadratic! [optimizer weight]
   (dotimes [_ 5]
     (optim/zero-grad optimizer)
