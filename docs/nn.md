@@ -44,9 +44,13 @@ Directly wraps LibTorch's optimized C++ RNN implementations.
 ```clojure
 (nn/batchnorm2d 64)
 (nn/layernorm 128)
+(nn/layernorm 128 :bias? false) ;; PyTorch-compatible bias-free LayerNorm
 (nn/rmsnorm 512) ;; High-performance RMSNorm for LLMs
 (nn/groupnorm 8 64)
 ```
+
+`clorch.nn.functional/one-hot` encodes integer tensors and either infers the
+class count or accepts it as the second argument.
 
 ### Pooling & Padding
 ```clojure
