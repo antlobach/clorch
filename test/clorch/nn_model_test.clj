@@ -95,3 +95,9 @@
       (is (= 1 (.size (nn/parameters layer))))
       (is (= [1 3] (t/size output)))
       (is (< (Math/abs (t/item-float (t/mean output))) 1.0e-6)))))
+
+(deftest training-mode-ignores-configuration-values
+  (let [dropout (nn/dropout 0.5)
+        model {:layers [dropout 1.0] :config {:dropout 0.5}}]
+    (is (identical? model (nn/train model false)))
+    (is (identical? model (nn/train model true)))))

@@ -261,7 +261,9 @@
 (extend-type clojure.lang.APersistentVector
   IModule
   (-forward [this x] (reduce (fn [acc layer] (forward layer acc)) x this))
-  (-train [this bool] (run! #(train % bool) this) this)
+  (-train [this bool]
+    (run! #(when (satisfies? IModule %) (train % bool)) this)
+    this)
   (-to [this dtype-or-device] (mapv #(to % dtype-or-device) this)))
 
 (extend-type clojure.lang.APersistentMap
@@ -269,7 +271,7 @@
   (-forward [_ _]
     (throw (Exception. "Cannot call forward on a raw map.")))
   (-train [this bool]
-    (run! #(train % bool) (vals this))
+    (run! #(when (satisfies? IModule %) (train % bool)) (vals this))
     this)
   (-to [this dtype-or-device]
     (into (empty this) (for [[k v] this] [k (to v dtype-or-device)]))))
