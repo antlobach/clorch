@@ -31,8 +31,8 @@ Create a Clojure project with this `deps.edn`:
 ```clojure
 {:paths ["src"]
  :deps {io.github.antlobach/clorch
-        {:git/tag "v0.2.0"
-         :git/sha "07642acdbc522e8aa2a20cd223912247614d2239"}}}
+        {:git/tag "v0.3.0"
+         :git/sha "6157e97d89f57789587bcbb4d7eee1fa94da68f2"}}}
 ```
 
 Start a REPL from the project directory:
