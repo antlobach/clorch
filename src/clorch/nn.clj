@@ -544,21 +544,27 @@
   (-forward [this x]
     (let [mean (torch/mean x -1 :keepdim true)
           v (torch/var x -1 :keepdim true :unbiased false)
-          norm-x (torch/div (torch/sub x mean) (torch/sqrt (torch/add v (:eps this))))]
-      (torch/add (torch/mul norm-x (:gamma this)) (:beta this))))
+          norm-x (torch/div (torch/sub x mean) (torch/sqrt (torch/add v (:eps this))))
+          scaled (torch/mul norm-x (:gamma this))]
+      (if-some [beta (:beta this)]
+        (torch/add scaled beta)
+        scaled)))
   (-train [this _] this)
   (-to [this dtype-or-device]
     (assoc this
            :gamma (to (:gamma this) dtype-or-device)
-           :beta (to (:beta this) dtype-or-device))))
+           :beta (some-> (:beta this) (to dtype-or-device)))))
 
 (defn layernorm
-  "Applies Layer Normalization over a mini-batch of inputs."
-  [normalized-shape & {:keys [eps] :or {eps 1e-5}}]
-  (let [shape (if (number? normalized-shape) [(clojure.core/long normalized-shape)] (mapv clojure.core/long normalized-shape))]
+  "Applies Layer Normalization over a mini-batch of inputs.
+  Set `:bias? false` for PyTorch's bias-free LayerNorm variant."
+  [normalized-shape & {:keys [eps bias?] :or {eps 1e-5 bias? true}}]
+  (let [shape (if (number? normalized-shape)
+                [(clojure.core/long normalized-shape)]
+                (mapv clojure.core/long normalized-shape))]
     (->LayerNormRecord
      (parameter (torch/ones shape))
-     (parameter (torch/zeros shape))
+     (when bias? (parameter (torch/zeros shape)))
      eps)))
 
 (defrecord RMSNormRecord [weight eps]

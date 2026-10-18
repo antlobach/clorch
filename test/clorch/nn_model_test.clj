@@ -87,3 +87,11 @@
                         snapshot))
             (finally
               (t/release! snapshot))))))))
+
+(deftest bias-free-layernorm-test
+  (t/with-torch
+    (let [layer (nn/layernorm 3 :bias? false)
+          output (nn/forward layer (t/tensor [[1.0 2.0 3.0]]))]
+      (is (= 1 (.size (nn/parameters layer))))
+      (is (= [1 3] (t/size output)))
+      (is (< (Math/abs (t/item-float (t/mean output))) 1.0e-6)))))
