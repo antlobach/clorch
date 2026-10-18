@@ -152,6 +152,12 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 | **Custom Models** | [x] |
 | - `SwiGLU` | [x] |
 | - `GroupedQueryAttention` | [x] |
+| **Transformer Modules** | [x] |
+| - `multihead-attention` | [x] |
+| - `transformer-encoder-layer` | [x] |
+| - `transformer-encoder` | [x] |
+| **State Dictionaries** | [x] |
+| - `load-flat-state-dict!`, `flat-parameter-names` | [x] |
 
 ---
 
@@ -176,6 +182,7 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 | - `cosine-similarity`, `pairwise-distance` | [x] |
 | **Fused Attention** | [x] |
 | - `scaled-dot-product-attention` | [x] |
+| - `combine-attention-masks` | [x] |
 
 ---
 
@@ -194,6 +201,7 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 |---------|--------|
 | `xavier-uniform!`, `xavier-normal!` | [x] |
 | `kaiming-uniform!`, `kaiming-normal!` | [x] |
+| `trunc-normal!` | [x] |
 | `normal!`, `uniform!`, `constant!`, `zeros!`, `ones!` | [x] |
 
 ---
@@ -243,6 +251,17 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 | Rank-zero model, optimizer, sampler, scaler, CPU RNG, and training checkpoints | [x] |
 ---
 
+### SafeTensors (`clorch.safetensors`)
+
+| Feature | Status |
+|---------|--------|
+| `load-file`, `save-file!`, `metadata` | [x] |
+| `load-state-dict!` via flat dotted parameter names | [x] |
+| All specification dtypes (bool through complex double) | [x] |
+| Validated headers, non-overlapping offsets, atomic writes | [x] |
+
+---
+
 ## What's Not Yet Implemented
 
 ### Specialized Tensors & Ops
@@ -266,8 +285,6 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 
 | Feature | Status |
 |---------|--------|
-| **Native Transformer Layers** | ❌ |
-| (Clojure implementations exist in examples) | |
 | **Container Modules** | ❌ |
 | - `ModuleList`, `ModuleDict`, `ParameterList` | ❌ |
 | **Utilities** | ❌ |
@@ -299,4 +316,4 @@ This document tracks what's been ported from PyTorch to Clorch, and what still n
 
 ---
 
-*Last updated: 2026-08-08*
+*Last updated: 2026-10-18*

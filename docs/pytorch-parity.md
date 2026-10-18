@@ -10,7 +10,7 @@ Clorch follows PyTorch's tensor, autograd, module, optimizer, data, and device c
 | Tracked feature-catalog coverage | **Pending recount after the PyTorch 2.10 upgrade** | `PORTING_STATUS.md` records the implemented surfaces, but the prior 268/328 estimate predates AMP and distributed training. |
 | Entire upstream PyTorch public API | **Not yet enumerated** | A whole-project percentage requires a version-pinned inventory of every upstream public symbol and behavior. |
 
-The 100% figure applies only to the 40 cross-language scenarios exercised by `tests_comparison/compare_torch.py`. Clorch will publish another breadth percentage after generating a version-pinned PyTorch 2.10 inventory.
+The 100% figure applies only to the 40 cross-language scenarios exercised by `tests_comparison/compare_torch.py`. The transformer modules and interleaved RoPE are additionally verified against a PyTorch reference by `run_transformer_comparison.sh` (`tests_comparison/compare_transformer.clj`). Clorch will publish another breadth percentage after generating a version-pinned PyTorch 2.10 inventory.
 
 The release suite verifies CPU behavior and a single-GPU CUDA path, including CUDA discovery, NCCL world size one, DDP backward, AMP overflow handling, fused scaled-dot-product attention, checkpoints, worker failures, and process cleanup. Multi-rank validation requires a host with at least two visible NVIDIA GPUs.
 
@@ -23,11 +23,11 @@ The release suite verifies CPU behavior and a single-GPU CUDA path, including CU
 | Indexing and slicing | Python-style `ix`, negative indices, ellipsis, stepped slices, tensor indices, masks, gather, select, and scatter-reduce | Full advanced-indexing mutation parity, sparse/nested indexing, and every upstream indexing edge case |
 | Linear algebra | Matrix products, decompositions, solving, inverse, determinant, eigen, SVD, QR, Cholesky, and norms | Remaining `torch.linalg` routines, batched edge cases, driver options, and complete complex-number coverage |
 | Autograd | `requires-grad`, `backward`, gradient access, detach, and `no-grad` | Custom autograd functions, `gradcheck`, forward-mode AD, inference mode, hooks, anomaly detection, and full graph-control APIs |
-| Neural-network modules | Linear, convolution, transposed convolution, normalization, pooling, padding, recurrent layers, embeddings, activations, dropout, and custom `defmodel` modules | Native transformer modules, complete container modules, hooks, parametrizations, pruning, lazy modules, and remaining specialized layers |
+| Neural-network modules | Linear, convolution, transposed convolution, normalization, pooling, padding, recurrent layers, embeddings, activations, dropout, multi-head attention, transformer encoder layers/encoders, and custom `defmodel` modules | Complete container modules, remaining attention/transformer options, hooks, parametrizations, pruning, lazy modules, and remaining specialized layers |
 | Functional API and losses | Core linear/convolutional functions, activations, normalization, pooling, interpolation, padding, and common classification/regression losses | Remaining functional operators and full loss/reduction/weighting option parity |
 | Optimizers | SGD, Adam, AdamW, RMSprop, Adagrad, zeroing, stepping, and native checkpoint restore | Remaining optimizers, learning-rate schedulers, public optimizer state dictionaries, parameter-group mutation, and hooks |
 | Data loading | Dataset protocol, tensor datasets, batching, shuffling, thread/process workers, and deterministic distributed samplers | Iterable datasets, DataPipes, collator breadth, pin-memory semantics, and complete worker lifecycle parity |
-| Serialization and JIT | Tensor/model save-load, state dictionaries, weight save-load, JIT load-save-forward, and atomic rank-zero training checkpoints | `torch.export`, compilation, tracing breadth, package APIs, ONNX export, CUDA RNG checkpointing, and complete archive compatibility |
+| Serialization and JIT | Tensor/model save-load, state dictionaries, weight save-load, JIT load-save-forward, atomic rank-zero training checkpoints, and SafeTensors archives (`clorch.safetensors`) | `torch.export`, compilation, tracing breadth, package APIs, ONNX export, CUDA RNG checkpointing, and complete archive compatibility |
 | CUDA | Automatic backend selection, availability, device count and selection, synchronization, seeding, explicit placement, autocast, dynamic gradient scaling, and fused scaled-dot-product attention | Streams, events, graphs, memory/allocator controls, peer access, and the remaining multi-GPU APIs |
 | Sparse and quantized computation | Basic quantized and complex dtype exposure | Sparse layouts and operators, complete quantization workflows, observers, prepared/converted modules, and quantized kernels |
 | Distributed training | Direct NCCL collectives, local rank launcher, distributed samplers, synchronous DDP, gradient accumulation, failure propagation, and rank-zero checkpoints | Gloo, RPC, FSDP, tensor parallelism, elastic membership, unused-parameter discovery, multi-node launcher support, and broader multi-GPU validation |
@@ -42,6 +42,8 @@ The release suite verifies CPU behavior and a single-GPU CUDA path, including CU
 | RMSNorm | Implemented | `nn/rmsnorm` |
 | Rotary position embeddings | Implemented | `torch/precompute-rope-freqs`, `torch/apply-rope` |
 | Grouped-query attention | Implemented | `nn/GroupedQueryAttention` |
+| Multi-head attention with KV caching | Implemented | `nn/multihead-attention` |
+| Transformer encoder blocks | Implemented | `nn/transformer-encoder-layer`, `nn/transformer-encoder` |
 | SwiGLU feed-forward block | Implemented | `nn/SwiGLU` |
 | Causal attention masks | Implemented | Tensor masking operations and Llama/GPT examples |
 | KV cache | Implemented in Llama-style model flow | `examples/modern_llama.clj`, `examples/nanochat.clj` |

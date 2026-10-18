@@ -21,6 +21,18 @@ These functions modify the input tensor in-place.
 
 ## Research-Standard Initializers
 
+### Truncated Normal
+
+Draws from `N(mean, std²)` and redraws values that fall outside `[mean - a·std, mean + a·std]`,
+matching `torch.nn.init.trunc_normal_`.
+
+```clojure
+(init/trunc-normal! x :mean 0.0 :std 0.02 :a -2.0 :b 2.0)
+
+;; Defaults: mean 0.0, std 1.0, bounds ±2 standard deviations
+(init/trunc-normal! x)
+```
+
 ### Xavier (Glorot) Initialization
 Designed for layers with symmetric activation functions (like `tanh` or `sigmoid`).
 

@@ -207,3 +207,24 @@ A built-in utility for high-quality text generation. It filters the probability 
 ```clojure
 (t/top-p (t/tensor [[0.1 0.8 0.1]]) 0.9)
 ```
+
+## Rotary Position Embeddings
+
+```clojure
+;; Cosine/sine tables of shape [1, sequence-length, head-dim].
+;; theta is the RoPE base (default 10000.0).
+;;
+;; Default layout rotates half-split pairs (0, D/2), (1, D/2+1), ...
+(t/precompute-rope-freqs head-dim seq-len)
+
+;; :interleaved? rotates adjacent pairs (0, 1), (2, 3), ...
+;; (the layout used by Llama-family and TabICL models)
+(t/precompute-rope-freqs head-dim seq-len :theta 100000.0 :interleaved? true)
+
+;; Applies rope to [batch, sequence, heads, head-dim]; pass :interleaved? true
+;; when the tables were precomputed with :interleaved? true.
+(t/apply-rope x cosines sines :interleaved? true)
+```
+
+The `:interleaved?` flag must match between `precompute-rope-freqs` and
+`apply-rope`.

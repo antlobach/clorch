@@ -24,6 +24,7 @@ nav:
       - Loss Functions: losses.md
       - Optimizers: optimizers.md
       - Initialization: init.md
+  - SafeTensors I/O: safetensors.md
   - Autograd: autograd.md
   - Distributed CUDA Training: distributed.md
   - PyTorch Parity: pytorch-parity.md
