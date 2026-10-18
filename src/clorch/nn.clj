@@ -859,6 +859,7 @@
 
 (defmacro defmodel [model-name args init-bindings & forward-specs]
   (let [field-syms (take-nth 2 init-bindings)
+        field-keys (mapv keyword field-syms)
         forward-fn (first (filter #(= (first %) 'forward) forward-specs))
         forward-args (second forward-fn)
         forward-body (nnext forward-fn)
@@ -869,13 +870,13 @@
          (-forward [this# ~(first forward-args)]
            (let [{:keys [~@field-syms]} this#] ~@forward-body))
          (-train [this# bool#]
-           (doseq [f# [~@field-syms]]
+           (doseq [f# [~@field-keys]]
              (let [v# (get this# f#)]
                (when (or (satisfies? IModule v#) (coll? v#))
                  (train v# bool#))))
            this#)
          (-to [this# dtype-or-device#]
-           (let [updates# (into {} (for [f# [~@field-syms]]
+           (let [updates# (into {} (for [f# [~@field-keys]]
                                      (let [v# (get this# f#)]
                                        [f# (if (or (satisfies? IModule v#) (coll? v#) (instance? org.bytedeco.pytorch.Tensor v#))
                                              (to v# dtype-or-device#)

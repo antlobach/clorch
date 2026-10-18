@@ -39,7 +39,11 @@
           x (t/randn [2 10])
           out (nn/forward m x)]
       (is (= [2 5] (t/size out)))
-      (is (= 4 (.size (nn/parameters m)))))))
+      (is (= 4 (.size (nn/parameters m))))
+      (testing "Device and dtype conversion reaches defmodel fields"
+        (let [m-double (nn/to m :float64)]
+          (is (every? #(= :float64 (t/dtype %))
+                      (t/->vector (nn/parameters m-double)))))))))
 
 (deftest flat-state-dict-loading-test
   (t/with-torch
