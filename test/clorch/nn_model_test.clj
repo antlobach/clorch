@@ -30,17 +30,22 @@
     (nn/defmodel MyModel [in out]
       [l1 (nn/linear in 16)
        l2 (nn/linear 16 out)
-       norm (nn/layernorm out)]
+       norm (nn/layernorm out)
+       dropout (nn/dropout 0.5)]
       (forward [x]
                (let [x1 (nn/forward l1 x)
                      x2 (F/relu x1)]
-                 (nn/forward norm (nn/forward l2 x2)))))
+                 (nn/forward dropout
+                             (nn/forward norm (nn/forward l2 x2))))))
 
     (let [m (MyModel 10 5)
           x (t/randn [2 10])
           out (nn/forward m x)]
       (is (= [2 5] (t/size out)))
       (is (= 6 (.size (nn/parameters m))))
+      (testing "Training mode reaches modules without treating parameters as modules"
+        (nn/train m false)
+        (is (t/allclose (nn/forward m x) (nn/forward m x))))
       (testing "Device and dtype conversion reaches defmodel fields"
         (let [m-double (nn/to m :float64)
               params (t/->vector (nn/parameters m-double))]

@@ -874,7 +874,7 @@
          (-train [this# bool#]
            (doseq [f# [~@field-keys]]
              (let [v# (get this# f#)]
-               (when (or (satisfies? IModule v#) (coll? v#))
+               (when (satisfies? IModule v#)
                  (train v# bool#))))
            this#)
          (-to [this# dtype-or-device#]
