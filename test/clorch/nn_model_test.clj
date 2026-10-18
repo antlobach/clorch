@@ -62,3 +62,28 @@
           output (nn/forward model (t/ones [1 3]))]
       (is (= #{"[0].weight" "[0].bias"} names loaded))
       (is (= 10.0 (double (t/item-float (t/sum output))))))))
+
+(deftest model-freeze-and-snapshot-test
+  (t/with-torch
+    (let [model (nn/sequential (nn/linear 2 1))]
+      (testing "model sections can be frozen and unfrozen"
+        (nn/set-trainable! model false)
+        (is (zero? (.size (nn/parameters model :trainable-only true))))
+        (nn/set-trainable! model true)
+        (is (= 2 (.size (nn/parameters model :trainable-only true)))))
+      (testing "a copied state restores parameters after later updates"
+        (let [snapshot (nn/clone-flat-state-dict model)]
+          (try
+            (nn/load-flat-state-dict!
+             model
+             {"[0].weight" (t/full [1 2] 3.0)
+              "[0].bias" (t/full [1] 4.0)})
+            (nn/load-flat-state-dict! model snapshot)
+            (is (= (set (keys snapshot)) (nn/flat-parameter-names model)))
+            (is (every? (fn [[parameter-name value]]
+                          (t/item-float
+                           (t/all (t/eq value
+                                        (get (nn/named-parameters model) parameter-name)))))
+                        snapshot))
+            (finally
+              (t/release! snapshot))))))))

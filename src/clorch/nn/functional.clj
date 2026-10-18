@@ -111,6 +111,14 @@
   (let [dim (if (map? dim-or-opts) (:dim dim-or-opts) dim-or-opts)]
     (torch/softmax (t/->tensor tensor) (long dim) (org.bytedeco.pytorch.ScalarTypeOptional.))))
 
+(defn one-hot
+  "Returns a one-hot encoding of an integer tensor.
+  Infers the class count when `num-classes` is omitted."
+  ([tensor]
+   (torch/one_hot (t/->tensor tensor)))
+  ([tensor num-classes]
+   (torch/one_hot (t/->tensor tensor) (long num-classes))))
+
 (defn dropout [tensor p & {:keys [training?] :or {training? true}}]
   (torch/dropout (t/->tensor tensor) (double p) (boolean training?)))
 

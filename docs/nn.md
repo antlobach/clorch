@@ -186,13 +186,19 @@ Use [`examples/simple.clj`](https://github.com/antlobach/clorch/blob/main/exampl
 ```clojure
 ;; Get all parameters as a native TensorVector
 (nn/parameters model)
+(nn/parameters model :trainable-only true)
 
-;; Get a nested map of all weights/biases
-(nn/state-dict model)
+;; Freeze or unfreeze a complete model section before optimizer construction
+(nn/set-trainable! (:encoder model) false)
 
-;; Load weights from a state dict
-(nn/load-state-dict model saved-sd)
+;; Save independent CPU copies for best-model restoration
+(def best-state (nn/clone-flat-state-dict model))
+(nn/load-flat-state-dict! model best-state)
+(t/release! best-state)
 ```
+
+`clone-flat-state-dict` retains its tensors across `with-torch` scopes. The
+caller owns those copies and must release them when they are no longer needed.
 
 ## Model Inspection
 

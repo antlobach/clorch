@@ -165,6 +165,16 @@ Call `set-epoch!` before each epoch. Otherwise each epoch reuses the same permut
 
 `amp/step!` unscales gradients, checks finite values across all initialized ranks, skips the optimizer step on overflow, and updates the scale. Autocast restores the thread's previous dtype, enabled flag, and cache setting after the body exits.
 
+To clip FP16 gradients, unscale exactly once before clipping. `amp/step!`
+reuses the recorded overflow result and does not divide the gradients again:
+
+```clojure
+(amp/backward! scaler loss)
+(when (amp/unscale! scaler optimizer)
+  (nn/clip-grad-norm! (nn/parameters model :trainable-only true) 1.0))
+(amp/step! scaler optimizer)
+```
+
 ## Checkpoints
 
 ```clojure

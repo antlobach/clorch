@@ -118,6 +118,17 @@
           (.push_back out p)))
       out)))
 
+(defn set-trainable!
+  "Enables or disables gradient computation for every parameter in `thing`.
+  Returns `thing` so model sections can be frozen before optimizer creation."
+  [thing trainable?]
+  (let [^TensorVector params (parameters thing)]
+    (dotimes [index (.size params)]
+      (autograd/set-requires-grad
+       (.get params (clojure.core/long index))
+       (clojure.core/boolean trainable?))))
+  thing)
+
 (defn clip-grad-norm!
   "Clips the total norm of an iterable of parameters."
   [params-list max-norm]
@@ -410,6 +421,48 @@
                    (walk v (str path "[" i "]")))))]
        (walk thing prefix)
        @res))))
+
+(defn clone-flat-state-dict
+  "Copies a model's flat parameter state to independent tensors.
+
+  Copies default to CPU and are retained across `with-torch` scopes. The caller
+  owns the returned map and should eventually pass it to `torch/release!`."
+  [thing & {:keys [device] :or {device :cpu}}]
+  (let [values (atom {})]
+    (letfn [(capture! [path value]
+              (let [copy (autograd/no-grad
+                          (torch/clone (torch/to value device)))]
+                (torch/retain! copy)
+                (swap! values assoc path copy)))
+            (walk [node path]
+              (cond
+                (instance? Module node)
+                (let [named-p (.named_parameters ^Module node)
+                      pairs (.pairs named-p)]
+                  (dotimes [i (.size named-p)]
+                    (let [parameter-name (.getString (.first pairs (clojure.core/long i)))
+                          full-name (if (empty? path)
+                                      parameter-name
+                                      (str path "." parameter-name))]
+                      (capture! full-name (.second pairs (clojure.core/long i))))))
+
+                (instance? Parameter node)
+                (capture! path (:tensor node))
+
+                (instance? Tensor node)
+                (capture! path node)
+
+                (map? node)
+                (doseq [[k v] node]
+                  (walk v (if (empty? path)
+                            (clojure.core/name k)
+                            (str path "." (clojure.core/name k)))))
+
+                (vector? node)
+                (doseq [[i v] (map-indexed vector node)]
+                  (walk v (str path "[" i "]")))))]
+      (walk thing "")
+      @values)))
 
 (defn load-flat-state-dict!
   "Copies a flat, dotted-path state dictionary into a model.
