@@ -29,21 +29,23 @@
     #_{:clj-kondo/ignore [:unresolved-symbol]}
     (nn/defmodel MyModel [in out]
       [l1 (nn/linear in 16)
-       l2 (nn/linear 16 out)]
+       l2 (nn/linear 16 out)
+       norm (nn/layernorm out)]
       (forward [x]
                (let [x1 (nn/forward l1 x)
                      x2 (F/relu x1)]
-                 (nn/forward l2 x2))))
+                 (nn/forward norm (nn/forward l2 x2)))))
 
     (let [m (MyModel 10 5)
           x (t/randn [2 10])
           out (nn/forward m x)]
       (is (= [2 5] (t/size out)))
-      (is (= 4 (.size (nn/parameters m))))
+      (is (= 6 (.size (nn/parameters m))))
       (testing "Device and dtype conversion reaches defmodel fields"
-        (let [m-double (nn/to m :float64)]
-          (is (every? #(= :float64 (t/dtype %))
-                      (t/->vector (nn/parameters m-double)))))))))
+        (let [m-double (nn/to m :float64)
+              params (t/->vector (nn/parameters m-double))]
+          (is (every? #(= :float64 (t/dtype %)) params))
+          (is (every? #(.is_leaf ^org.bytedeco.pytorch.Tensor %) params)))))))
 
 (deftest flat-state-dict-loading-test
   (t/with-torch

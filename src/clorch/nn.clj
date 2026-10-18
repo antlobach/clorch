@@ -71,7 +71,9 @@
       (dotimes [i (.size thing)]
         (.push_back out ^Tensor (torch/to (.get thing (clojure.core/long i)) dtype-or-device)))
       out)
-    (instance? Parameter thing) (assoc thing :tensor (torch/to (:tensor thing) dtype-or-device))
+    (instance? Parameter thing)
+    (parameter (torch/to (:tensor thing) dtype-or-device)
+               :requires-grad (.requires_grad ^Tensor (:tensor thing)))
     (map? thing) (into (empty thing) (for [[k v] thing] [k (to v dtype-or-device)]))
     (sequential? thing) (mapv #(to % dtype-or-device) thing)
     (vector? thing) (mapv #(to % dtype-or-device) thing)
@@ -878,9 +880,7 @@
          (-to [this# dtype-or-device#]
            (let [updates# (into {} (for [f# [~@field-keys]]
                                      (let [v# (get this# f#)]
-                                       [f# (if (or (satisfies? IModule v#) (coll? v#) (instance? org.bytedeco.pytorch.Tensor v#))
-                                             (to v# dtype-or-device#)
-                                             v#)])))]
+                                       [f# (to v# dtype-or-device#)])))]
              (clojure.core/merge this# updates#)))
          clojure.lang.IFn
          (invoke [this# x#] (forward this# x#)))
