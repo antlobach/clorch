@@ -117,6 +117,21 @@
         (check! (= [1 2 8 16] (torch/size output))
                 "Fused attention returned the wrong shape"
                 {:shape (torch/size output)}))
+      (let [attention (nn/to (nn/multihead-attention 8 2 :dropout 0.0) :cuda)
+            input (torch/randn [1 4 8] {:device :cuda})
+            attention-mask (torch/zeros [4 4] {:device :cuda})
+            padding-mask (torch/tensor [[false false false true]]
+                                       {:dtype :bool :device :cuda})
+            output (nn/forward attention
+                               {:query input
+                                :key input
+                                :value input
+                                :attention-mask attention-mask
+                                :key-padding-mask padding-mask})]
+        (check! (and (.is_cuda ^Tensor output)
+                     (= [1 4 8] (torch/size output)))
+                "Combined attention masks did not remain on CUDA"
+                {:shape (torch/size output)}))
       (dist/with-process-group
         {:backend :nccl
          :rank 0

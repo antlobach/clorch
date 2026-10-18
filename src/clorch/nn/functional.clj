@@ -155,12 +155,12 @@
               (t/logical-and attention-mask allowed)
 
               (.is_floating_point attention-mask)
-              (let [padding-bias (t/to
-                                  (t/masked-fill
-                                   (t/zeros [batch-size 1 1 key-length])
+              (let [padding-bias (t/masked-fill
+                                  (t/zeros-like
                                    padding-mask
-                                   Double/NEGATIVE_INFINITY)
-                                  (t/dtype attention-mask))]
+                                   {:dtype (t/dtype attention-mask)})
+                                  padding-mask
+                                  Double/NEGATIVE_INFINITY)]
                 (t/add attention-mask padding-bias))
 
               :else
