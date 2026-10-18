@@ -2019,15 +2019,17 @@
   "Precomputes rotary-embedding cosine and sine tables.
 
   `interleaved?` selects adjacent pairs `(0,1), (2,3), ...`; the default uses
-  the half-split layout `(0,D/2), (1,D/2+1), ...`."
-  [dim seq-len & {:keys [theta interleaved?]
+  the half-split layout `(0,D/2), (1,D/2+1), ...`. Pass `device` to create
+  tables for inputs on a non-default device."
+  [dim seq-len & {:keys [theta interleaved? device]
                   :or {theta 10000.0 interleaved? false}}]
   (let [freqs (div (arange 0 dim 2) (clojure.core/double dim))
         inv-freq (pow (clojure.core/float theta) (mul freqs -1.0))
         freqs-matrix (outer (arange seq-len) inv-freq)
         emb (if interleaved?
               (repeat-interleave freqs-matrix 2 -1)
-              (cat [freqs-matrix freqs-matrix] -1))]
+              (cat [freqs-matrix freqs-matrix] -1))
+        emb (if device (to emb device) emb)]
     [(cos emb) (sin emb)]))
 
 (defn apply-rope

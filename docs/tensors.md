@@ -221,6 +221,9 @@ A built-in utility for high-quality text generation. It filters the probability 
 ;; (the layout used by Llama-family and TabICL models)
 (t/precompute-rope-freqs head-dim seq-len :theta 100000.0 :interleaved? true)
 
+;; Build tables on the same device as CUDA inputs.
+(t/precompute-rope-freqs head-dim seq-len :device :cuda)
+
 ;; Applies rope to [batch, sequence, heads, head-dim]; pass :interleaved? true
 ;; when the tables were precomputed with :interleaved? true.
 (t/apply-rope x cosines sines :interleaved? true)
